@@ -8,5 +8,7 @@ Hackathon
 - We record a demo of what's possible, like a video. We can be a little selective of what we show off (:<
   - Hackathon doesn't need to deal with the longest video
   - Just a one minute clip is good enough
-- Zaven et. al. are studying for a Cupp midterm over the week
-  
+- Zaven et. al. are studying for a bunch of midterms over the week
+  - They are using [[Vast.ai]] for their compute
+  - They are also doing a preprocessed version
+- A game-ified UI would be best
