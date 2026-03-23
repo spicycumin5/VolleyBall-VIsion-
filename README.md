@@ -1,5 +1,6 @@
 # VolleyBall-VIsion-
-Hackathon 
+
+The hackathon project by Kyumin Han, Evan Inrig, and Jason Press (:
 
 ## Stuff Dr. Scalzo said in class
 
@@ -12,3 +13,16 @@ Hackathon
   - They are using [[Vast.ai]] for their compute
   - They are also doing a preprocessed version
 - A game-ified UI would be best
+
+## Getting the Python working
+
+Use a venv. I use `.venv` for my life, so I will assume you use `.venv` from now on. And also UNIX, because fuck Windows (use WSL).
+
+``` sh
+python -m venv .venv
+source .venv/bin/activate
+pip install -r python/requirements.txt
+```
+
+For running, make sure to `source .venv/bin/activate` to be in the virtual environment if you don't have the system packages globally.
+
