@@ -114,7 +114,7 @@ def is_blurry(img, threshold=50):
 def is_on_player(bx, by, player_boxes):
     for (x1, y1, x2, y2) in player_boxes:
         # Calculate the y-coordinate for the bottom of the "head zone"
-        head_bottom = y1 + (y2 - y1) * 0.25 
+        head_bottom = y1 + (y2 - y1) * 0.25
 
         # Check if the ball's (bx, by) is inside this upper rectangle
         if x1 <= bx <= x2 and y1 <= by <= head_bottom:
@@ -169,7 +169,7 @@ def write_json_frame(file_obj, frame_idx, ball_pos, players):
         return
     frame_data = {
         "frame": frame_idx,
-        "ball": {"x": ball_pos[0], "y": ball_pos[1]} if ball_pos else None,
+        "ball": {"x": ball_pos[0], "y": ball_pos[1], "conf": ball_pos[2]} if ball_pos else None,
         "players": players
     }
 
@@ -321,7 +321,7 @@ def main():
         is_predicted = False
 
         if ball_pos is not None:
-            bx, by = ball_pos
+            bx, by, _ = ball_pos
             if not kalman.is_tracking and is_on_player(bx, by, current_player_boxes):
                 pass
             else:

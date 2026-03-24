@@ -70,7 +70,7 @@ class PyTorchTrackNetTracker:
         x_orig = int(x_pred * (orig_w / self.input_width))
         y_orig = int(y_pred * (orig_h / self.input_height))
 
-        return (x_orig, y_orig)
+        return (x_orig, y_orig, float(max_val))
 
 
 def draw_heatmap_overlay(annotated_frame, heatmap_2d, alpha=0.4):
