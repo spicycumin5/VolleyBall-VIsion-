@@ -56,7 +56,9 @@ parser.add_argument('--line_width', type=int, default=2,
 parser.add_argument('--font_size', type=float, default=2,
                     help='Font size for label visualization')
 parser.add_argument('--imgsz', type=int, default=640,
-                    help='Image size for YOLO. 640, 1280, and 1920 are good.')
+                    help='Image size for YOLO. 640, 1280, and 1920 are good')
+parser.add_argument('--heatmap-conf', type=int, default=0.5,
+                    help='Confidence for the ball tracker')
 
 args = parser.parse_args()
 
@@ -163,7 +165,7 @@ def main():
 
     tracknet = PyTorchTrackNetTracker(
         weights_path="python/weights/tracknet-v4_best-model.pth",
-        threshold=0.2,
+        threshold=args.heatmap_conf,
     )
     kalman = KalmanBallTracker()
 
