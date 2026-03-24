@@ -4,7 +4,8 @@ rich
 torch
 ultralytics
 yacs
-termcolortabulate
+termcolor
+tabulate
 tensorboard
 fvcore
 gdown

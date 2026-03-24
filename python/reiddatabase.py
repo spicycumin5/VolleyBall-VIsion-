@@ -16,8 +16,8 @@ class ReIDDatabase:
         self.embeddings.append([emb])
         return new_id
 
-    def match(self, emb, threshold=0.75):
-        if len(self.player_ids) == 0:
+    def match(self, emb, threshold=0.9):
+        if len(self.player_ids) < 3:
             return None
 
         D, I = self.index.search(emb.reshape(1, -1), k=1)

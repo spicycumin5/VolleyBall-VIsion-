@@ -7,14 +7,19 @@ import sys
 import collections
 import collections.abc
 import types
+import math
 
 # 1. Patch for FastReID on Python 3.10+
-collections.Mapping = collections.abc.Mapping 
+if not hasattr(collections, "Mapping"):
+    collections.Mapping = collections.abc.Mapping
 
 # 2. Patch for FastReID on PyTorch 1.13+
 if 'torch._six' not in sys.modules:
     torch_six = types.ModuleType('torch._six')
     torch_six.string_classes = (str,)
+    torch_six.inf = math.inf
+    torch_six.nan = math.nan
+    torch_six.with_metaclass = lambda metaclass, *bases: metaclass("NewClass", bases, {})
     sys.modules['torch._six'] = torch_six
     
 import argparse
@@ -57,9 +62,9 @@ def load_reid_model():
     from fastreid.engine import DefaultPredictor
 
     cfg = get_cfg()
-    cfg.merge_from_file("python/fast-reid/configs/MSMT17/sbs_R101-ibn.yml")
+    cfg.merge_from_file("python/weights/sbs_R101-ibn.yml")
     cfg.MODEL.WEIGHTS = "python/weights/msmt_sbs_R101-ibn.pth"
-    cfg.MODEL.DEVICE = "cpu"
+    cfg.MODEL.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
     predictor = DefaultPredictor(cfg)
     return predictor
