@@ -30,7 +30,6 @@ from rich.progress import track as track
 from ultralytics import YOLO
 import torch
 from reiddatabase import ReIDDatabase, TrackMemory
-import torch
 from collections import deque
 
 parser = argparse.ArgumentParser()
@@ -76,9 +75,9 @@ def get_embedding(model, crop):
     crop = crop.astype("float32") / 255.0
 
     mean = np.array([0.485, 0.456, 0.406])
-    std  = np.array([0.229, 0.224, 0.225])
+    std = np.array([0.229, 0.224, 0.225])
     crop = (crop - mean) / std
-    
+
     crop = crop.transpose(2, 0, 1)
     tensor = torch.as_tensor(crop.astype("float32")).unsqueeze(0)
 

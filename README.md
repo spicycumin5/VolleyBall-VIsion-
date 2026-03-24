@@ -26,3 +26,4 @@ pip install -r python/requirements.txt
 
 For running, make sure to `source .venv/bin/activate` to be in the virtual environment if you don't have the system packages globally.
 
+Download `msmt_sbs_R101-ibn.pth` to `pthon/weights` to make `test.py` work.
