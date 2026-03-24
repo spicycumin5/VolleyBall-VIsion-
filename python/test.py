@@ -65,7 +65,7 @@ parser.add_argument('--heatmap_conf', type=int, default=0.5,
                     help='Confidence for the ball tracker')
 parser.add_argument('--heatmap_alpha', type=float, default=0.0,
                     help='Alpha for heatmap overlay')
-parser.add_argument('--json_outpu', default=None, help="Path to output json")
+parser.add_argument('--json_output', default=None, help="Path to output json")
 
 args = parser.parse_args()
 
