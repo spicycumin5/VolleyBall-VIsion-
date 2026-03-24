@@ -166,11 +166,11 @@ def main():
     device = 0 if torch.cuda.is_available() else "cpu"
     # https://github.com/mikel-brostrom/boxmot/blob/59784c49eeec19736b48e034382d393d764d611d/boxmot/trackers/botsort/botsort.py#L21
     tracker = BotSort(
-        reid_weights=Path('osnet_ain_x1_0_msmt17.pt'),
+        reid_weights=Path('osnet_ibn_x1_0_msmt17.pt'),
         device=device,
         half=False,
         match_thresh=0.8,
-        proximity_thresh=0.7,
+        proximity_thresh=0.8,
         appearance_thresh=0.5,
     )
     model = YOLO(args.model)
