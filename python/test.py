@@ -10,6 +10,7 @@ import collections.abc
 import types
 import math
 from pathlib import Path
+import json
 import torch
 import torchvision.transforms as T
 
@@ -64,6 +65,7 @@ parser.add_argument('--heatmap_conf', type=int, default=0.5,
                     help='Confidence for the ball tracker')
 parser.add_argument('--heatmap_alpha', type=float, default=0.0,
                     help='Alpha for heatmap overlay')
+parser.add_argument('--json_outpu', default=None, help="Path to output json")
 
 args = parser.parse_args()
 
@@ -162,6 +164,18 @@ def get_dinov2_embedding(model, crop_bgr):
     return emb.astype("float32")
 
 
+def write_json_frame(file_obj, frame_idx, ball_pos, players):
+    if file_obj is None:
+        return
+    frame_data = {
+        "frame": frame_idx,
+        "ball": {"x": ball_pos[0], "y": ball_pos[1]} if ball_pos else None,
+        "players": players
+    }
+
+    file_obj.write(json.dumps(frame_data) + '\n')
+
+
 track_history = defaultdict(lambda: deque(maxlen=10))
 
 
@@ -193,7 +207,7 @@ def is_motion_consistent(track_id, new_center, max_jump=150):
     prev_center = track_history[track_id][-1]
     dist = motion_distance(prev_center, new_center)
 
-    return dist < max_jump 
+    return dist < max_jump
 
 
 def main():
@@ -209,7 +223,6 @@ def main():
         appearance_thresh=0.6,
     )
     model = YOLO(args.model)
-    reid_model = load_dinov2_model()
 
     tracknet = PyTorchTrackNetTracker(
         weights_path="python/weights/tracknet-v4_best-model.pth",
@@ -219,9 +232,6 @@ def main():
 
     missing_frames = 0
     MAX_COAST_FRAMES = 10
-
-    db = ReIDDatabase(dim=768)
-    track_memory = TrackMemory(history=60)
 
     cap = cv2.VideoCapture(args.input)
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -234,10 +244,10 @@ def main():
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(args.output, fourcc, fps, frame_size)
 
-    yolo_to_global = {}
-
-    REID_INTERVAL = 5
-    last_seen = {}
+    json_file = None
+    if args.json_output:
+        os.makedirs(os.path.split(args.json_output)[0], exist_ok=True)
+        json_file = open(args.json_output, 'w')
 
     for frame_idx in track(range(total_frames)):
         ret, frame = cap.read()
@@ -254,24 +264,24 @@ def main():
             imgsz=args.imgsz,
         )
         current_player_boxes = []
-
+        frame_players_data = []
         dets = results[0].boxes.data.cpu().numpy()
 
         if len(dets) > 0:
-            tracks = tracker.update(dets, frame) # Returns [x1, y1, x2, y2, id, conf, cls, ind]
+            tracks = tracker.update(dets, frame)  # Returns [x1, y1, x2, y2, id, conf, cls, ind]
         else:
             tracks = np.empty((0, 8))
 
         if len(tracks) > 0:
             boxes = tracks[:, :4]
             track_ids = tracks[:, 4].astype(int)
+            confs = tracks[:, 5]
 
-            for box, track_id in zip(boxes, track_ids):
+            for box, track_id, conf in zip(boxes, track_ids, confs):
                 x1, y1, x2, y2 = map(int, box)
                 current_player_boxes.append((x1, y1, x2, y2))
-                
+
                 center = get_center((x1, y1, x2, y2))
-                area = box_area((x1, y1, x2, y2))
 
                 # Draw Box & ID
                 if not is_motion_consistent(track_id, center):
@@ -285,7 +295,7 @@ def main():
                         prev_center = track_history[track_id][-1]
                         if motion_distance(prev_center, center) > 80:
                             continue
-                        
+
                 else:
                     color = (0, 255, 0)
                     label = f"P-{track_id}"
@@ -293,6 +303,12 @@ def main():
                 cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(annotated_frame, label, (x1, y1 - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
+                frame_players_data.append({
+                    "tid": int(track_id),
+                    "box": [x1, y1, x2, y2],
+                    "conf": float(conf)
+                })
 
         ball_pos = tracknet.predict(frame)
         if tracknet.current_heatmap is not None:
@@ -339,8 +355,12 @@ def main():
 
         out.write(annotated_frame)
 
+        write_json_frame(json_file, frame_idx, final_ball_pos, frame_players_data)
+
     cap.release()
     out.release()
+    if json_file:
+        json_file.close()
 
 
 if __name__ == "__main__":
