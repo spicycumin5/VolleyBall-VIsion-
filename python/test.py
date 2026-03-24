@@ -31,7 +31,7 @@ import cv2
 from rich.progress import track as track
 from ultralytics import YOLO
 from PIL import Image
-from boxmot import DeepOCSORT
+from boxmot import BotSort
 
 
 from reiddatabase import ReIDDatabase, TrackMemory
@@ -160,73 +160,10 @@ def get_dinov2_embedding(model, crop_bgr):
     return emb.astype("float32")
 
 
-def resolve_player_id(yolo_id, box, frame, frame_idx, reid_model, db, track_memory, 
-                      yolo_to_global, last_seen, reid_interval=5):
-    """
-    Tiers of identity resolution to ensure IDs are stubborn and unique.
-    Returns: (match_id, confidence_score)
-    """
-    x1, y1, x2, y2 = map(int, box)
-    cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-
-    match_id = yolo_to_global.get(yolo_id)
-    score = 1.0  # Default confidence for established tracks
-
-    # Trigger ReID if it's a new track OR we've hit our refresh interval
-    should_reid = (match_id is None) or (frame_idx % reid_interval == 0)
-
-    if should_reid:
-        crop = frame[y1:y2, x1:x2]
-        if crop.size == 0 or is_blurry(crop):
-            return (match_id if match_id else "Blurry"), 0
-
-        # Get DINOv2 Embedding
-        emb = get_dinov2_embedding(reid_model, crop)
-        track_memory.add(yolo_id, emb)
-        agg_emb = track_memory.get(yolo_id)
-
-        if agg_emb is not None:
-            # TIER 1: Spatial Recovery (Only for brand new tracks)
-            if match_id is None:
-                best_spatial_id = None
-                min_dist = 120  # Max pixels a player could move between frames
-                for gid, (lx, ly, l_frame) in last_seen.items():
-                    # If player was seen within last 2 seconds (60 frames)
-                    if frame_idx - l_frame < 60:
-                        dist = math.sqrt((cx - lx)**2 + (cy - ly)**2)
-                        if dist < min_dist:
-                            best_spatial_id = gid
-                            min_dist = dist
-
-                if best_spatial_id is not None:
-                    match_id = best_spatial_id
-
-            # TIER 2: Stubborn ReID Match
-            # We use a very low threshold (0.45) to prevent new ID creation
-            # Search the database for the closest visual match
-            matched_info = db.match_with_score(agg_emb, threshold=0.45)
-
-            if matched_info:
-                id_from_db, sim_score = matched_info
-                # If spatial and ReID disagree, ReID (Visuals) wins
-                match_id = id_from_db
-                score = sim_score
-                db.update(match_id, agg_emb)
-            elif match_id is None:
-                # TIER 3: New ID (Absolute last resort)
-                match_id = db.add(agg_emb)
-                score = 1.0
-
-            # Lock the result into the tracker mapping
-            yolo_to_global[yolo_id] = match_id
-
-    return match_id, score
-
-
 def main():
     """Do the thing."""
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    tracker = DeepOCSORT(
+    tracker = BotSort(
         device=device
     )
     model = YOLO(args.model)
@@ -267,17 +204,13 @@ def main():
 
         annotated_frame = frame.copy()
 
-        results = model.track(
+        results = model.predict(
             frame,
             conf=args.conf,
             classes=[0],
-            tracker='bytetrack.yaml',
-            iou=0.5,
-            persist=True,
             verbose=False,
             imgsz=args.imgsz,
         )
-        frame_candidates = []
         current_player_boxes = []
 
         dets = results[0].boxes.data.cpu().numpy()
@@ -291,46 +224,14 @@ def main():
             boxes = tracks[:, :4]
             track_ids = tracks[:, 4].astype(int)
 
-            for box, yolo_id in zip(boxes, track_ids):
-                # 1. Get identity from our stubborn resolver
-                m_id, conf = resolve_player_id(
-                    yolo_id, box, frame, frame_idx, reid_model,
-                    db, track_memory, yolo_to_global, last_seen,
-                    reid_interval=5
-                )
-
-                # 2. Store candidate for duplicate checking
+            for box, track_id in zip(boxes, track_ids):
                 x1, y1, x2, y2 = map(int, box)
-                frame_candidates.append({
-                    'm_id': m_id,
-                    'conf': conf,
-                    'box': (x1, y1, x2, y2),
-                    'center': ((x1+x2)//2, (y1+y2)//2)
-                })
                 current_player_boxes.append((x1, y1, x2, y2))
-
-        # 3. Constraint Check: No duplicates in one frame
-        # Sort by confidence so the "best" Player 1 keeps the ID
-        frame_candidates.sort(key=lambda x: x['conf'] if isinstance(x['m_id'], int) else -1, reverse=True)
-
-        used_ids_this_frame = set()
-        for cand in frame_candidates:
-            final_id = cand['m_id']
-
-            if isinstance(final_id, int):
-                if final_id in used_ids_this_frame:
-                    final_id = "Duplicate"
-                else:
-                    used_ids_this_frame.add(final_id)
-                    # Update global "Last Seen" for spatial tracking in next frames
-                    last_seen[final_id] = (cand['center'][0], cand['center'][1], frame_idx)
-
-            # 4. Final Drawing
-            x1, y1, x2, y2 = cand['box']
-            color = (0, 255, 0) if isinstance(final_id, int) else (0, 165, 255)
-            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(annotated_frame, f"P-{final_id}", (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+                
+                # Draw Box & ID
+                cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.putText(annotated_frame, f"P-{track_id}", (x1, y1 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
         ball_pos = tracknet.predict(frame)
         if tracknet.current_heatmap is not None:
