@@ -49,16 +49,8 @@ parser.add_argument("--input", required=True, help="Input video path")
 parser.add_argument("--output", required=True, help="Output video path")
 parser.add_argument('--show_conf', default=False, action='store_true',
                     help='Whether to show the confidence scores')
-parser.add_argument('--show_labels', default=False,
-                    action='store_true', help='Whether to show the labels')
 parser.add_argument('--conf', type=float, default=0.2,
                     help='Object confidence threshold for detection')
-parser.add_argument('--classes', nargs='+', default=None,
-                    help='List of classes to detect')
-parser.add_argument('--line_width', type=int, default=2,
-                    help='Line width for bounding box visualization')
-parser.add_argument('--font_size', type=float, default=2,
-                    help='Font size for label visualization')
 parser.add_argument('--imgsz', type=int, default=640,
                     help='Image size for YOLO. 640, 1280, and 1920 are good')
 parser.add_argument('--heatmap_conf', type=int, default=0.5,
