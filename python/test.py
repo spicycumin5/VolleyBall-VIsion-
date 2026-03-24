@@ -1,11 +1,29 @@
+"""
+A basic ahh test file.
+
+I'll make it prettier later I promise (:
+"""
+import sys
+import collections
+import collections.abc
+import types
+
+# 1. Patch for FastReID on Python 3.10+
+collections.Mapping = collections.abc.Mapping 
+
+# 2. Patch for FastReID on PyTorch 1.13+
+if 'torch._six' not in sys.modules:
+    torch_six = types.ModuleType('torch._six')
+    torch_six.string_classes = (str,)
+    sys.modules['torch._six'] = torch_six
+    
 import argparse
 import numpy as np
 import os
 import cv2
-from rick.progress import track as track
+from rich.progress import track as track
 from ultralytics import YOLO
-import faiss
-from collections import defaultdict, deque
+import torch
 from reiddatabase import ReIDDatabase, TrackMemory
 
 parser = argparse.ArgumentParser()
@@ -37,7 +55,7 @@ def load_reid_model():
     from fastreid.engine import DefaultPredictor
 
     cfg = get_cfg()
-    cfg.merge_from_file("configs/MSMT17/vit_transreid.yml")  # ViT config
+    cfg.merge_from_file("fast_reid/configs/MSMT17/vit_transreid.yml")  # ViT config
     cfg.MODEL.WEIGHTS = "vit_transreid.pth"  # pretrained weights
     cfg.MODEL.DEVICE = "cuda"
 
@@ -47,10 +65,9 @@ def load_reid_model():
 
 def get_embedding(model, crop):
     crop = cv2.resize(crop, (256, 512))  # standard ReID size
-    crop = crop[:, :, ::-1]  # BGR → RGB
-    crop = np.ascontiguousarray(crop)
 
-    outputs = model(crop)
+    with torch.no_grad():
+        outputs = model(crop)
     emb = outputs["feat"].cpu().numpy().flatten()
 
     emb /= np.linalg.norm(emb)
@@ -80,6 +97,8 @@ def main():
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(args.output, fourcc, fps, frame_size)
 
+    yolo_to_global = {}
+
     for _ in track(range(total_frames)):
         ret, frame = cap.read()
         if not ret:
@@ -104,25 +123,28 @@ def main():
         track_ids = results[0].boxes.id.cpu().numpy().astype(int)
 
         for box, track_id in zip(boxes, track_ids):
-            x1, x2, y1, y2 = map(int, box)
+            x1, y1, x2, y2 = map(int, box)
 
-            crop = frame[y1:y2, x1:x2]
-            if crop.size == 0 or is_blurry(crop):
-                continue
-
-            emb = get_embedding(reid_model, crop)
-
-            track_memory.add(track_id, emb)
-            agg_emb = track_memory.get(track_id)
-
-            if agg_emb is None:
-                continue
-
-            match_id = db.match(agg_emb)
-            if match_id is None:
-                match_id = db.add(agg_emb)
+            if track_id in yolo_to_global:
+                match_id = yolo_to_global[track_id]
             else:
-                db.update(match_id, agg_emb)
+                crop = frame[y1:y2, x1:x2]
+                if crop.size == 0 or is_blurry(crop):
+                    continue
+
+                emb = get_embedding(reid_model, crop)
+
+                track_memory.add(track_id, emb)
+                agg_emb = track_memory.get(track_id)
+
+                if agg_emb is None:
+                    match_id = "Pending..."
+                else:
+                    match_id = db.match(agg_emb)
+                    if match_id is None:
+                        match_id = db.add(agg_emb)
+                    else:
+                        db.update(match_id, agg_emb)
 
             cv2.putText(
                 annotated_frame,

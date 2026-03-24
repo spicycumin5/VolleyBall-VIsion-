@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+import numpy as np
+import faiss
+from collections import defaultdict, deque
 
 class ReIDDatabase:
     def __init__(self, dim=768):  # ViT embeddings often 768

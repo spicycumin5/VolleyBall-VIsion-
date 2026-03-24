@@ -1,5 +1,13 @@
+numpy
 opencv-python
 rich
+torch
 ultralytics
+yacs
+termcolortabulate
+tensorboard
+fvcore
+gdown
+scikit-learn
+fastreid
 faiss-cpu
-faiss-gpu
