@@ -7,7 +7,7 @@ class ReIDDatabase:
     def __init__(self, dim=768, alpha=0.1):
         self.dim = dim
         self.alpha = alpha
-        self.index = faiss.IndexFlatIP(dim)
+        self.index = faiss.IndexIDMap(faiss.IndexFlatIP(dim))
         self.prototypes = {}
         self.next_id = 0
 
