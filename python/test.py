@@ -231,7 +231,7 @@ def main():
     kalman = KalmanBallTracker()
 
     missing_frames = 0
-    MAX_COAST_FRAMES = 10
+    MAX_COAST_FRAMES = 20
 
     cap = cv2.VideoCapture(args.input)
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -321,7 +321,7 @@ def main():
         is_predicted = False
 
         if ball_pos is not None:
-            bx, by, _ = ball_pos
+            bx, by, conf = ball_pos
             if not kalman.is_tracking and is_on_player(bx, by, current_player_boxes):
                 pass
             else:
@@ -338,7 +338,7 @@ def main():
                 kalman.reset()
 
         if final_ball_pos is not None:
-            bx, by = final_ball_pos
+            bx, by, conf = final_ball_pos
             color = (255, 0, 255) if is_predicted else (0, 165, 255)
 
             cv2.circle(annotated_frame, (bx, by), 6, color, -1)
