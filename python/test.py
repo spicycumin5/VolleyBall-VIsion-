@@ -275,6 +275,8 @@ def main():
             else:
                 kalman.reset()
 
+        if final_ball_pos is not None:
+            bx, by = final_ball_pos
             color = (255, 0, 255) if is_predicted else (0, 165, 255)
 
             cv2.circle(annotated_frame, (bx, by), 6, color, -1)
