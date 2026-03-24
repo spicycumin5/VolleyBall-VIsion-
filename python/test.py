@@ -31,11 +31,11 @@ import cv2
 from rich.progress import track as track
 from ultralytics import YOLO
 from PIL import Image
-from collections import deque
 
 
 from reiddatabase import ReIDDatabase, TrackMemory
-from tracknet import PyTorchTrackNetTracker
+from tracknet import PyTorchTrackNetTracker, draw_heatmap_overlay
+from ball_tracker import KalmanBallTracker
 
 parser = argparse.ArgumentParser()
 
@@ -102,6 +102,18 @@ def is_blurry(img, threshold=50):
     return cv2.Laplacian(img, cv2.CV_64F).var() < threshold
 
 
+def is_on_player(bx, by, player_boxes):
+    for (x1, y1, x2, y2) in player_boxes:
+        # Calculate the y-coordinate for the bottom of the "head zone"
+        head_bottom = y1 + (y2 - y1) * 0.25 
+        
+        # Check if the ball's (bx, by) is inside this upper rectangle
+        if x1 <= bx <= x2 and y1 <= by <= head_bottom:
+            return True
+            
+    return False
+
+
 def load_dinov2_model():
     # Load the small DINOv2 model (fast and accurate)
     # Output dimension: 768
@@ -148,10 +160,15 @@ def main():
     """Do the thing."""
     model = YOLO(args.model)
     reid_model = load_dinov2_model()
+
     tracknet = PyTorchTrackNetTracker(
         weights_path="python/weights/tracknet-v4_best-model.pth",
         threshold=0.2,
     )
+    kalman = KalmanBallTracker()
+
+    missing_frames = 0
+    MAX_COAST_FRAMES = 10
 
     db = ReIDDatabase(dim=768)
     track_memory = TrackMemory()
@@ -185,12 +202,14 @@ def main():
             verbose=False,
             imgsz=args.imgsz,
         )
+        current_player_boxes = []
 
         if results[0].boxes is not None and results[0].boxes.id is not None:
             boxes = results[0].boxes.xyxy.cpu().numpy()
             track_ids = results[0].boxes.id.cpu().numpy().astype(int)
 
             for box, track_id in zip(boxes, track_ids):
+                current_player_boxes.append((map(int, box)))
                 x1, y1, x2, y2 = map(int, box)
 
                 if track_id in yolo_to_global:
@@ -213,7 +232,7 @@ def main():
                                 match_id = db.add(agg_emb)
                             else:
                                 db.update(match_id, agg_emb)
-                        yolo_to_global[track_id] = match_id 
+                            yolo_to_global[track_id] = match_id 
 
                 cv2.putText(
                     annotated_frame,
@@ -234,10 +253,41 @@ def main():
                 )
 
         ball_pos = tracknet.predict(frame)
+        if hasattr(tracknet, 'last_heatmap'):
+            annotated_frame = draw_heatmap_overlay(annotated_frame, tracknet.last_heatmap)
+        final_ball_pos = None
+        is_predicted = False
 
         if ball_pos is not None:
             bx, by = ball_pos
-            cv2.circle(annotated_frame, (bx, by), 6, (0, 165, 255), -1)
+            if not kalman.is_tracking and is_on_player(bx, by, current_player_boxes):
+                pass
+            else:
+                kalman.correct(bx, by)
+                final_ball_pos = kalman.predict()
+                missing_frames = 0
+
+        if final_ball_pos is None:
+            missing_frames += 1
+            if missing_frames <= MAX_COAST_FRAMES:
+                final_ball_pos = kalman.predict()
+                is_predicted = True
+            else:
+                kalman.reset()
+
+            color = (255, 0, 255) if is_predicted else (0, 165, 255)
+
+            cv2.circle(annotated_frame, (bx, by), 6, color, -1)
+
+            cv2.putText(
+                annotated_frame,
+                "Ball (Physics)" if is_predicted else "Ball",
+                (bx - 15, by - 15),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                color,
+                2
+            )
 
         out.write(annotated_frame)
 

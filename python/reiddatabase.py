@@ -8,21 +8,21 @@ class ReIDDatabase:
         self.dim = dim
         self.alpha = alpha
         self.index = faiss.IndexFlatIP(dim)
-        self.player_ids = []
-        self.embeddings = []
+        self.prototypes = {}
+        self.next_id = 0
 
 
     def add(self, emb):
         emb = self._normalize(emb)
-        
+
         player_id = self.next_id
         self.next_id += 1
-        
+
         self.prototypes[player_id] = emb
-        
+
         # FAISS requires IDs to be 64-bit ints
         self.index.add_with_ids(emb.reshape(1, -1), np.array([player_id], dtype=np.int64))
-        
+
         return player_id
 
     def match(self, emb, threshold=0.9):

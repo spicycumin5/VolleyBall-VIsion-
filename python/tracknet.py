@@ -53,6 +53,7 @@ class PyTorchTrackNetTracker:
             # The model outputs a tensor of shape (1, 3, H, W). 
             # Index 2 is the heatmap corresponding to the current frame 't'.
             current_heatmap = heatmap[0, 2, :, :].cpu().numpy()
+        self.current_heatmap = current_heatmap
 
         # 4. Extract Coordinates
         max_val = np.max(current_heatmap)
@@ -67,3 +68,33 @@ class PyTorchTrackNetTracker:
         y_orig = int(y_pred * (orig_h / self.input_height))
 
         return (x_orig, y_orig)
+
+
+def draw_heatmap_overlay(annotated_frame, heatmap_2d, alpha=0.6):
+    """
+    Overlays a TrackNet heatmap onto the main video frame.
+    """
+    if heatmap_2d is None:
+        return annotated_frame
+
+    # 1. Resize the 512x288 heatmap to match the main video frame dimensions
+    h, w = annotated_frame.shape[:2]
+    heatmap_resized = cv2.resize(heatmap_2d, (w, h))
+
+    # 2. Normalize the math tensor into a standard 0-255 image
+    heatmap_norm = cv2.normalize(heatmap_resized, None, 0, 255, cv2.NORM_MINMAX)
+    heatmap_uint8 = heatmap_norm.astype(np.uint8)
+
+    # 3. Apply the JET colormap (Red = High Confidence, Blue = Low Confidence)
+    heatmap_color = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
+
+    # 4. Alpha blend the heatmap with the original frame
+    blended = cv2.addWeighted(annotated_frame, 1 - alpha, heatmap_color, alpha, 0)
+
+    # 5. MASKING (Crucial step!)
+    # We don't want to tint the entire gym blue. We only apply the blended 
+    # overlay to pixels where the neural network actually detects *something*.
+    mask = heatmap_uint8 > 15
+    annotated_frame[mask] = blended[mask]
+
+    return annotated_frame
