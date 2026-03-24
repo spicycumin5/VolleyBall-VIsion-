@@ -164,12 +164,12 @@ def get_dinov2_embedding(model, crop_bgr):
     return emb.astype("float32")
 
 
-def write_json_frame(file_obj, frame_idx, ball_pos, players):
+def write_json_frame(file_obj, frame_idx, ball_pos, players, ball_conf):
     if file_obj is None:
         return
     frame_data = {
         "frame": frame_idx,
-        "ball": {"x": ball_pos[0], "y": ball_pos[1], "conf": ball_pos[2]} if ball_pos else None,
+        "ball": {"x": ball_pos[0], "y": ball_pos[1], "conf": ball_conf} if ball_pos else None,
         "players": players
     }
 
@@ -319,9 +319,10 @@ def main():
             )
         final_ball_pos = None
         is_predicted = False
+        ball_conf = 0.0
 
         if ball_pos is not None:
-            bx, by, conf = ball_pos
+            bx, by, ball_conf = ball_pos
             if not kalman.is_tracking and is_on_player(bx, by, current_player_boxes):
                 pass
             else:
@@ -338,7 +339,7 @@ def main():
                 kalman.reset()
 
         if final_ball_pos is not None:
-            bx, by, conf = final_ball_pos
+            bx, by = final_ball_pos
             color = (255, 0, 255) if is_predicted else (0, 165, 255)
 
             cv2.circle(annotated_frame, (bx, by), 6, color, -1)
@@ -355,7 +356,7 @@ def main():
 
         out.write(annotated_frame)
 
-        write_json_frame(json_file, frame_idx, final_ball_pos, frame_players_data)
+        write_json_frame(json_file, frame_idx, final_ball_pos, frame_players_data, ball_conf)
 
     cap.release()
     out.release()
