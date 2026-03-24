@@ -2,11 +2,14 @@
 import numpy as np
 import faiss
 from collections import defaultdict, deque
+import os
+import pickle
 
 class ReIDDatabase:
-    def __init__(self, dim=768, alpha=0.1):
+    def __init__(self, dim=768, alpha=0.05, save_path="player_db"):
         self.dim = dim
         self.alpha = alpha
+        self.save_path = save_path
         self.index = faiss.IndexIDMap(faiss.IndexFlatIP(dim))
         self.prototypes = {}
         self.next_id = 0
@@ -25,7 +28,7 @@ class ReIDDatabase:
 
         return player_id
 
-    def match(self, emb, threshold=0.9):
+    def match(self, emb, threshold=0.7):
         if self.index.ntotal == 0:
             return None
 
@@ -69,6 +72,35 @@ class ReIDDatabase:
         if norm > 0:
             return (emb / norm).astype("float32")
         return emb.astype("float32")
+
+    def save(self):
+        """Saves the current player database to disk."""
+        if not os.path.exists(self.save_path):
+            os.makedirs(self.save_path)
+
+        # Save FAISS index
+        faiss.write_index(self.index, os.path.join(self.save_path, "index.faiss"))
+
+        # Save prototypes and metadata
+        with open(os.path.join(self.save_path, "meta.pkl"), 'wb') as f:
+            pickle.dump({
+                'prototypes': self.prototypes,
+                'next_id': self.next_id
+            }, f)
+        print(f"Database saved with {self.next_id} players.")
+
+    def load(self):
+        """Loads a previously saved database."""
+        index_file = os.path.join(self.save_path, "index.faiss")
+        meta_file = os.path.join(self.save_path, "meta.pkl")
+
+        if os.path.exists(index_file) and os.path.exists(meta_file):
+            self.index = faiss.read_index(index_file)
+            with open(meta_file, 'rb') as f:
+                data = pickle.dump(f) # Note: use pickle.load(f)
+                self.prototypes = data['prototypes']
+                self.next_id = data['next_id']
+            print("Database loaded.")
 
 
 class TrackMemory:

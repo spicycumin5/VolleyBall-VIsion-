@@ -110,11 +110,11 @@ def is_on_player(bx, by, player_boxes):
     for (x1, y1, x2, y2) in player_boxes:
         # Calculate the y-coordinate for the bottom of the "head zone"
         head_bottom = y1 + (y2 - y1) * 0.25 
-        
+
         # Check if the ball's (bx, by) is inside this upper rectangle
         if x1 <= bx <= x2 and y1 <= by <= head_bottom:
             return True
-            
+
     return False
 
 
@@ -174,7 +174,7 @@ def main():
     MAX_COAST_FRAMES = 10
 
     db = ReIDDatabase(dim=768)
-    track_memory = TrackMemory()
+    track_memory = TrackMemory(history=60)
 
     cap = cv2.VideoCapture(args.input)
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -212,8 +212,8 @@ def main():
             track_ids = results[0].boxes.id.cpu().numpy().astype(int)
 
             for box, track_id in zip(boxes, track_ids):
-                current_player_boxes.append((map(int, box)))
                 x1, y1, x2, y2 = map(int, box)
+                current_player_boxes.append((x1, y1, x2, y2))
 
                 if track_id in yolo_to_global:
                     match_id = yolo_to_global[track_id]
@@ -235,7 +235,7 @@ def main():
                                 match_id = db.add(agg_emb)
                             else:
                                 db.update(match_id, agg_emb)
-                            yolo_to_global[track_id] = match_id 
+                            yolo_to_global[track_id] = match_id
 
                 cv2.putText(
                     annotated_frame,
