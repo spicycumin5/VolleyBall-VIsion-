@@ -4,7 +4,7 @@ import Header from '../components/Header';
 
 function VodReviewPage(){
     return(
-        <div className="min-h-screen min-w-screen bg-blue-400 gap-0">
+        <div className="min-h-screen min-w-screen bg-app-ice-blue gap-0">
             <div className="flex flex-col">
                 <Header />
                 <div className="flex flex-row">

@@ -3,11 +3,21 @@
 // Evan Inrig
 
 import React from 'react';
+import BackgroundVideo from '../components/BackgroundVideo';
 
 function LandingPage(){
     return (
         <>
-            <h1> Put landing page here</h1>
+            <div id="background-video" className="flex items-center justify-center h-screen overflow-hidden">
+                <BackgroundVideo />
+                <div className="z-10 p-4 text-center  shadow-lg-20">
+                    <h1 className="text-orange-300 text-shadow-lg/20 text-8xl font-bold">VolleyVision</h1>
+                    <h2 className="text-orange-200/90 text-shadow-lg/20 text-2xl font-semibold">By Evan Inrig, Kyumin Han, and Jason Press</h2>
+                </div>
+                <button className="bg-slate-900">
+                    Get Started
+                </button>
+            </div>
         </>
     );
 }
