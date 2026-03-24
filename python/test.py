@@ -8,6 +8,7 @@ import collections
 import collections.abc
 import types
 import math
+from pathlib import Path
 import torch
 import torchvision.transforms as T
 
@@ -164,6 +165,7 @@ def main():
     """Do the thing."""
     device = "cuda" if torch.cuda.is_available() else "cpu"
     tracker = BotSort(
+        model_weights=Path('osnet_x0_25_msmt17.pt'),
         device=device
     )
     model = YOLO(args.model)
