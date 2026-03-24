@@ -5,6 +5,7 @@ I'll make it prettier later I promise (:
 """
 import sys
 import collections
+from collections import defaultdict, deque
 import collections.abc
 import types
 import math
@@ -161,6 +162,40 @@ def get_dinov2_embedding(model, crop_bgr):
     return emb.astype("float32")
 
 
+track_history = defaultdict(lambda: deque(maxlen=10))
+
+
+def get_center(box):
+    x1, y1, x2, y2 = box
+    return np.array([(x1 + x2) / 2, (y1 + y2) / 2])
+
+
+def box_area(box):
+    x1, y1, x2, y2 = box
+    return (x2 - x1) * (y2 - y1)
+
+
+def motion_distance(prev_center, new_center):
+    return np.linalg.norm(prev_center - new_center)
+
+
+def is_far_player(box, threshold=5000):
+    return box_area(box) < threshold
+
+
+def is_motion_consistent(track_id, new_center, max_jump=150):
+    """
+    Reject matches where the object teleports unrealistically.
+    """
+    if len(track_history[track_id]) == 0:
+        return True
+
+    prev_center = track_history[track_id][-1]
+    dist = motion_distance(prev_center, new_center)
+
+    return dist < max_jump 
+
+
 def main():
     """Do the thing."""
     device = 0 if torch.cuda.is_available() else "cpu"
@@ -169,9 +204,9 @@ def main():
         reid_weights=Path('osnet_ibn_x1_0_msmt17.pt'),
         device=device,
         half=False,
-        match_thresh=0.8,
+        match_thresh=0.9,
         proximity_thresh=0.8,
-        appearance_thresh=0.5,
+        appearance_thresh=0.6,
     )
     model = YOLO(args.model)
     reid_model = load_dinov2_model()
@@ -235,10 +270,29 @@ def main():
                 x1, y1, x2, y2 = map(int, box)
                 current_player_boxes.append((x1, y1, x2, y2))
                 
+                center = get_center((x1, y1, x2, y2))
+                area = box_area((x1, y1, x2, y2))
+
                 # Draw Box & ID
-                cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                cv2.putText(annotated_frame, f"P-{track_id}", (x1, y1 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                if not is_motion_consistent(track_id, center):
+                    continue
+
+                if is_far_player((x1, x2, y1, y2)):
+                    color = (0, 165, 255)
+                    label = f"P-{track_id} (far)"
+
+                    if len(track_history[track_id]) > 0:
+                        prev_center = track_history[track_id][-1]
+                        if motion_distance(prev_center, center) > 80:
+                            continue
+                        
+                else:
+                    color = (0, 255, 0)
+                    label = f"P-{track_id}"
+
+                cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
+                cv2.putText(annotated_frame, label, (x1, y1 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
 
         ball_pos = tracknet.predict(frame)
         if tracknet.current_heatmap is not None:
