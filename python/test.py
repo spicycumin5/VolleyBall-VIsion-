@@ -1,45 +1,360 @@
+"""
+A basic ahh test file.
+
+I'll make it prettier later I promise (:
+"""
+import sys
+import collections
+from collections import defaultdict, deque
+import collections.abc
+import types
+import math
+from pathlib import Path
+import json
+import torch
+import torchvision.transforms as T
+
+# 1. Patch for FastReID on Python 3.10+
+if not hasattr(collections, "Mapping"):
+    collections.Mapping = collections.abc.Mapping
+
+# 2. Patch for FastReID on PyTorch 1.13+
+if not hasattr(torch, "_six"):
+    torch_six = types.ModuleType('torch._six')
+    torch_six.string_classes = (str,)
+    torch_six.inf = math.inf
+    torch_six.nan = math.nan
+    torch_six.with_metaclass = lambda metaclass, *bases: metaclass("NewClass", bases, {})
+    sys.modules['torch._six'] = torch_six
+
 import argparse
+import numpy as np
 import os
 import cv2
+from rich.progress import track as track
 from ultralytics import YOLO
+from PIL import Image
+from boxmot import BotSort
 
+
+from reiddatabase import ReIDDatabase, TrackMemory
+from tracknet import PyTorchTrackNetTracker, draw_heatmap_overlay
+from ball_tracker import KalmanBallTracker
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--model", required=True, help="Model to load")
+parser.add_argument("--model", help="Model to load. If none, defaults to 'yolo26x.pt'",
+                    default='yolo26x.pt')
 parser.add_argument("--input", required=True, help="Input video path")
 parser.add_argument("--output", required=True, help="Output video path")
+parser.add_argument('--show_conf', default=False, action='store_true',
+                    help='Whether to show the confidence scores')
+parser.add_argument('--conf', type=float, default=0.2,
+                    help='Object confidence threshold for detection')
+parser.add_argument('--imgsz', type=int, default=640,
+                    help='Image size for YOLO. 640, 1280, and 1920 are good')
+parser.add_argument('--heatmap_conf', type=int, default=0.5,
+                    help='Confidence for the ball tracker')
+parser.add_argument('--heatmap_alpha', type=float, default=0.0,
+                    help='Alpha for heatmap overlay')
+parser.add_argument('--json_output', default=None, help="Path to output json")
 
 args = parser.parse_args()
 
+
+def load_reid_model():
+    from fastreid.config import get_cfg
+    from fastreid.engine import DefaultPredictor
+
+    cfg = get_cfg()
+    cfg.merge_from_file("python/weights/sbs_R101-ibn.yml")
+    cfg.MODEL.WEIGHTS = "python/weights/msmt_sbs_R101-ibn.pth"
+    cfg.MODEL.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+    predictor = DefaultPredictor(cfg)
+    return predictor
+
+
+def get_embedding(model, crop):
+    crop = cv2.resize(crop, (256, 512))  # standard ReID size
+    crop = crop[:, :, ::-1]
+    crop = crop.astype("float32") / 255.0
+
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    crop = (crop - mean) / std
+
+    crop = crop.transpose(2, 0, 1)
+    tensor = torch.as_tensor(crop.astype("float32")).unsqueeze(0)
+
+    with torch.no_grad():
+        outputs = model(tensor)
+
+    emb = outputs.cpu().numpy()[0]
+
+    norm = np.linalg.norm(emb)
+    if norm > 0:
+        emb /= norm
+
+    return emb.astype("float32")
+
+
+def is_blurry(img, threshold=50):
+    return cv2.Laplacian(img, cv2.CV_64F).var() < threshold
+
+
+def is_on_player(bx, by, player_boxes):
+    for (x1, y1, x2, y2) in player_boxes:
+        # Calculate the y-coordinate for the bottom of the "head zone"
+        head_bottom = y1 + (y2 - y1) * 0.25
+
+        # Check if the ball's (bx, by) is inside this upper rectangle
+        if x1 <= bx <= x2 and y1 <= by <= head_bottom:
+            return True
+
+    return False
+
+
+def load_dinov2_model():
+    # Load the small DINOv2 model (fast and accurate)
+    # Output dimension: 768
+    model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14')
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device)
+    model.eval() # Set to evaluation mode
+
+    return model
+
+
+def get_dinov2_embedding(model, crop_bgr):
+    # 1. Convert OpenCV BGR to RGB, then to PIL Image
+    crop_rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
+    pil_image = Image.fromarray(crop_rgb)
+
+    # 2. DINOv2 Standard Preprocessing
+    transform = T.Compose([
+        T.Resize((224, 224)), # Force square for the ViT
+        T.ToTensor(),
+        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+
+    tensor = transform(pil_image).unsqueeze(0)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    tensor = tensor.to(device)
+
+    # 3. Extract Features
+    with torch.no_grad():
+        features = model(tensor)
+
+    # 4. Normalize and return as numpy array
+    emb = features.cpu().numpy()[0]
+    norm = np.linalg.norm(emb)
+    if norm > 0:
+        emb /= norm
+
+    return emb.astype("float32")
+
+
+def write_json_frame(file_obj, frame_idx, ball_pos, players, ball_conf):
+    if file_obj is None:
+        return
+    frame_data = {
+        "frame": frame_idx,
+        "ball": {"x": ball_pos[0], "y": ball_pos[1], "conf": ball_conf} if ball_pos else None,
+        "players": players
+    }
+
+    file_obj.write(json.dumps(frame_data) + '\n')
+
+
+track_history = defaultdict(lambda: deque(maxlen=10))
+
+
+def get_center(box):
+    x1, y1, x2, y2 = box
+    return np.array([(x1 + x2) / 2, (y1 + y2) / 2])
+
+
+def box_area(box):
+    x1, y1, x2, y2 = box
+    return (x2 - x1) * (y2 - y1)
+
+
+def motion_distance(prev_center, new_center):
+    return np.linalg.norm(prev_center - new_center)
+
+
+def is_far_player(box, threshold=5000):
+    return box_area(box) < threshold
+
+
+def is_motion_consistent(track_id, new_center, max_jump=150):
+    """
+    Reject matches where the object teleports unrealistically.
+    """
+    if len(track_history[track_id]) == 0:
+        return True
+
+    prev_center = track_history[track_id][-1]
+    dist = motion_distance(prev_center, new_center)
+
+    return dist < max_jump
+
+
 def main():
+    """Do the thing."""
+    device = 0 if torch.cuda.is_available() else "cpu"
+    # https://github.com/mikel-brostrom/boxmot/blob/59784c49eeec19736b48e034382d393d764d611d/boxmot/trackers/botsort/botsort.py#L21
+    tracker = BotSort(
+        reid_weights=Path('osnet_ibn_x1_0_msmt17.pt'),
+        device=device,
+        half=False,
+        match_thresh=0.9,
+        proximity_thresh=0.8,
+        appearance_thresh=0.6,
+    )
     model = YOLO(args.model)
 
+    tracknet = PyTorchTrackNetTracker(
+        weights_path="python/weights/tracknet-v4_best-model.pth",
+        threshold=args.heatmap_conf,
+    )
+    kalman = KalmanBallTracker()
+
+    missing_frames = 0
+    MAX_COAST_FRAMES = 20
+
     cap = cv2.VideoCapture(args.input)
-    fps = cap.get(cv2.CAP_PROP_FOS)
-    frame_size = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(CAP_PROP_FRAME_HEIGHT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_size = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     os.makedirs(os.path.split(args.output)[0], exist_ok=True)
 
-    fourcc = cv2.VideoWriter_fourcc(*.'XVID')
-    out = cv2.VideoWriter(args.output_path, fourcc, fps, frame_size)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(args.output, fourcc, fps, frame_size)
 
-    while cap.isOpened():
+    json_file = None
+    if args.json_output:
+        os.makedirs(os.path.split(args.json_output)[0], exist_ok=True)
+        json_file = open(args.json_output, 'w')
+
+    for frame_idx in track(range(total_frames)):
         ret, frame = cap.read()
         if not ret:
             break
-        results = model.predict(
-            frame,
-            classes=[0, 32], # [human, sportsball]
-        )
 
         annotated_frame = frame.copy()
-        annotated_frame = results[0].plot()
+
+        results = model.predict(
+            frame,
+            conf=args.conf,
+            classes=[0],
+            verbose=False,
+            imgsz=args.imgsz,
+        )
+        current_player_boxes = []
+        frame_players_data = []
+        dets = results[0].boxes.data.cpu().numpy()
+
+        if len(dets) > 0:
+            tracks = tracker.update(dets, frame)  # Returns [x1, y1, x2, y2, id, conf, cls, ind]
+        else:
+            tracks = np.empty((0, 8))
+
+        if len(tracks) > 0:
+            boxes = tracks[:, :4]
+            track_ids = tracks[:, 4].astype(int)
+            confs = tracks[:, 5]
+
+            for box, track_id, conf in zip(boxes, track_ids, confs):
+                x1, y1, x2, y2 = map(int, box)
+                current_player_boxes.append((x1, y1, x2, y2))
+
+                center = get_center((x1, y1, x2, y2))
+
+                # Draw Box & ID
+                if not is_motion_consistent(track_id, center):
+                    continue
+
+                if is_far_player((x1, x2, y1, y2)):
+                    color = (0, 165, 255)
+                    label = f"P-{track_id} (far)"
+
+                    if len(track_history[track_id]) > 0:
+                        prev_center = track_history[track_id][-1]
+                        if motion_distance(prev_center, center) > 80:
+                            continue
+
+                else:
+                    color = (0, 255, 0)
+                    label = f"P-{track_id}"
+
+                cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
+                cv2.putText(annotated_frame, label, (x1, y1 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
+                frame_players_data.append({
+                    "tid": int(track_id),
+                    "box": [x1, y1, x2, y2],
+                    "conf": float(conf)
+                })
+
+        ball_pos = tracknet.predict(frame)
+        if tracknet.current_heatmap is not None:
+            annotated_frame = draw_heatmap_overlay(
+                annotated_frame,
+                tracknet.current_heatmap,
+                alpha=args.heatmap_alpha,
+            )
+        final_ball_pos = None
+        is_predicted = False
+        ball_conf = 0.0
+
+        if ball_pos is not None:
+            bx, by, ball_conf = ball_pos
+            if not kalman.is_tracking and is_on_player(bx, by, current_player_boxes):
+                pass
+            else:
+                kalman.correct(bx, by)
+                final_ball_pos = kalman.predict()
+                missing_frames = 0
+
+        if final_ball_pos is None:
+            missing_frames += 1
+            if missing_frames <= MAX_COAST_FRAMES:
+                final_ball_pos = kalman.predict()
+                is_predicted = True
+            else:
+                kalman.reset()
+
+        if final_ball_pos is not None:
+            bx, by = final_ball_pos
+            color = (255, 0, 255) if is_predicted else (0, 165, 255)
+
+            cv2.circle(annotated_frame, (bx, by), 6, color, -1)
+
+            cv2.putText(
+                annotated_frame,
+                "Ball (Physics)" if is_predicted else "Ball",
+                (bx - 15, by - 15),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                color,
+                2
+            )
 
         out.write(annotated_frame)
 
+        write_json_frame(json_file, frame_idx, final_ball_pos, frame_players_data, ball_conf)
+
     cap.release()
     out.release()
+    if json_file:
+        json_file.close()
+
 
 if __name__ == "__main__":
     main()
