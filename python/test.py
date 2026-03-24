@@ -31,6 +31,7 @@ import cv2
 from rich.progress import track as track
 from ultralytics import YOLO
 from PIL import Image
+from boxmot import DeepOCSORT
 
 
 from reiddatabase import ReIDDatabase, TrackMemory
@@ -224,6 +225,10 @@ def resolve_player_id(yolo_id, box, frame, frame_idx, reid_model, db, track_memo
 
 def main():
     """Do the thing."""
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    tracker = DeepOCSORT(
+        device=device
+    )
     model = YOLO(args.model)
     reid_model = load_dinov2_model()
 
@@ -275,15 +280,22 @@ def main():
         frame_candidates = []
         current_player_boxes = []
 
-        if results[0].boxes is not None and results[0].boxes.id is not None:
-            boxes = results[0].boxes.xyxy.cpu().numpy()
-            track_ids = results[0].boxes.id.cpu().numpy().astype(int)
+        dets = results[0].boxes.data.cpu().numpy()
+
+        if len(dets) > 0:
+            tracks = tracker.update(dets, frame) # Returns [x1, y1, x2, y2, id, conf, cls, ind]
+        else:
+            tracks = np.empty((0, 8))
+
+        if len(tracks) > 0:
+            boxes = tracks[:, :4]
+            track_ids = tracks[:, 4].astype(int)
 
             for box, yolo_id in zip(boxes, track_ids):
                 # 1. Get identity from our stubborn resolver
                 m_id, conf = resolve_player_id(
-                    yolo_id, box, frame, frame_idx, reid_model, 
-                    db, track_memory, yolo_to_global, last_seen, 
+                    yolo_id, box, frame, frame_idx, reid_model,
+                    db, track_memory, yolo_to_global, last_seen,
                     reid_interval=5
                 )
 
@@ -300,11 +312,11 @@ def main():
         # 3. Constraint Check: No duplicates in one frame
         # Sort by confidence so the "best" Player 1 keeps the ID
         frame_candidates.sort(key=lambda x: x['conf'] if isinstance(x['m_id'], int) else -1, reverse=True)
-        
+
         used_ids_this_frame = set()
         for cand in frame_candidates:
             final_id = cand['m_id']
-            
+
             if isinstance(final_id, int):
                 if final_id in used_ids_this_frame:
                     final_id = "Duplicate"

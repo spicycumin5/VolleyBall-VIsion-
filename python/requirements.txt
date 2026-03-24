@@ -12,3 +12,4 @@ gdown
 scikit-learn
 fastreid
 faiss-cpu
+boxmot
