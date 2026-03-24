@@ -73,7 +73,7 @@ class PyTorchTrackNetTracker:
         return (x_orig, y_orig)
 
 
-def draw_heatmap_overlay(annotated_frame, heatmap_2d, alpha=0.8):
+def draw_heatmap_overlay(annotated_frame, heatmap_2d, alpha=0.4):
     """
     Overlays a TrackNet heatmap onto the main video frame.
     """

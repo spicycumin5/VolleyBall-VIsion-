@@ -57,8 +57,10 @@ parser.add_argument('--font_size', type=float, default=2,
                     help='Font size for label visualization')
 parser.add_argument('--imgsz', type=int, default=640,
                     help='Image size for YOLO. 640, 1280, and 1920 are good')
-parser.add_argument('--heatmap-conf', type=int, default=0.5,
+parser.add_argument('--heatmap_conf', type=int, default=0.5,
                     help='Confidence for the ball tracker')
+parser.add_argument('--heatmap_alpha', type=int, default=0.3,
+                    help='Alpha for heatmap overlay')
 
 args = parser.parse_args()
 
@@ -146,7 +148,6 @@ def get_dinov2_embedding(model, crop_bgr):
 
     # 3. Extract Features
     with torch.no_grad():
-        # DINOv2 returns a tensor of shape (1, embedding_dim)
         features = model(tensor)
 
     # 4. Normalize and return as numpy array
@@ -256,7 +257,11 @@ def main():
 
         ball_pos = tracknet.predict(frame)
         if tracknet.current_heatmap is not None:
-            annotated_frame = draw_heatmap_overlay(annotated_frame, tracknet.current_heatmap)
+            annotated_frame = draw_heatmap_overlay(
+                annotated_frame,
+                tracknet.current_heatmap,
+                alpha=args.heatmap_alpha,
+            )
         final_ball_pos = None
         is_predicted = False
 
