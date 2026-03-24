@@ -255,8 +255,8 @@ def main():
                 )
 
         ball_pos = tracknet.predict(frame)
-        if hasattr(tracknet, 'last_heatmap'):
-            annotated_frame = draw_heatmap_overlay(annotated_frame, tracknet.last_heatmap)
+        if tracknet.current_heatmap is not None:
+            annotated_frame = draw_heatmap_overlay(annotated_frame, tracknet.current_heatmap)
         final_ball_pos = None
         is_predicted = False
 

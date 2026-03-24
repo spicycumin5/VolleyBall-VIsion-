@@ -22,6 +22,8 @@ class PyTorchTrackNetTracker:
         # 3-frame buffer
         self.frame_buffer = deque(maxlen=3)
 
+        self.current_heatmap = None
+
     def predict(self, frame):
         """Return (x, y) coordinates of the ball in the current frame, or None."""
         orig_h, orig_w = frame.shape[:2]
@@ -53,12 +55,13 @@ class PyTorchTrackNetTracker:
             # The model outputs a tensor of shape (1, 3, H, W). 
             # Index 2 is the heatmap corresponding to the current frame 't'.
             current_heatmap = heatmap[0, 2, :, :].cpu().numpy()
-        self.current_heatmap = current_heatmap
 
         # 4. Extract Coordinates
         max_val = np.max(current_heatmap)
         if max_val < self.threshold:
             return None # Confidence too low
+
+        self.current_heatmap = current_heatmap
 
         # Find the (y, x) of the highest peak in the heatmap
         y_pred, x_pred = np.unravel_index(np.argmax(current_heatmap), current_heatmap.shape)
@@ -70,7 +73,7 @@ class PyTorchTrackNetTracker:
         return (x_orig, y_orig)
 
 
-def draw_heatmap_overlay(annotated_frame, heatmap_2d, alpha=0.6):
+def draw_heatmap_overlay(annotated_frame, heatmap_2d, alpha=0.8):
     """
     Overlays a TrackNet heatmap onto the main video frame.
     """
