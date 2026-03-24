@@ -8,29 +8,34 @@ import collections
 import collections.abc
 import types
 import math
+import torch
+import torchvision.transforms as T
 
 # 1. Patch for FastReID on Python 3.10+
 if not hasattr(collections, "Mapping"):
     collections.Mapping = collections.abc.Mapping
 
 # 2. Patch for FastReID on PyTorch 1.13+
-if 'torch._six' not in sys.modules:
+if not hasattr(torch, "_six"):
     torch_six = types.ModuleType('torch._six')
     torch_six.string_classes = (str,)
     torch_six.inf = math.inf
     torch_six.nan = math.nan
     torch_six.with_metaclass = lambda metaclass, *bases: metaclass("NewClass", bases, {})
     sys.modules['torch._six'] = torch_six
-    
+
 import argparse
 import numpy as np
 import os
 import cv2
 from rich.progress import track as track
 from ultralytics import YOLO
-import torch
-from reiddatabase import ReIDDatabase, TrackMemory
+from PIL import Image
 from collections import deque
+
+
+from reiddatabase import ReIDDatabase, TrackMemory
+from tracknet import PyTorchTrackNetTracker
 
 parser = argparse.ArgumentParser()
 
@@ -97,12 +102,58 @@ def is_blurry(img, threshold=50):
     return cv2.Laplacian(img, cv2.CV_64F).var() < threshold
 
 
+def load_dinov2_model():
+    # Load the small DINOv2 model (fast and accurate)
+    # Output dimension: 768
+    model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14')
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device)
+    model.eval() # Set to evaluation mode
+
+    return model
+
+
+def get_dinov2_embedding(model, crop_bgr):
+    # 1. Convert OpenCV BGR to RGB, then to PIL Image
+    crop_rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
+    pil_image = Image.fromarray(crop_rgb)
+
+    # 2. DINOv2 Standard Preprocessing
+    transform = T.Compose([
+        T.Resize((224, 224)), # Force square for the ViT
+        T.ToTensor(),
+        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+
+    tensor = transform(pil_image).unsqueeze(0)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    tensor = tensor.to(device)
+
+    # 3. Extract Features
+    with torch.no_grad():
+        # DINOv2 returns a tensor of shape (1, embedding_dim)
+        features = model(tensor)
+
+    # 4. Normalize and return as numpy array
+    emb = features.cpu().numpy()[0]
+    norm = np.linalg.norm(emb)
+    if norm > 0:
+        emb /= norm
+
+    return emb.astype("float32")
+
+
 def main():
     """Do the thing."""
     model = YOLO(args.model)
-    reid_model = load_reid_model()
+    reid_model = load_dinov2_model()
+    tracknet = PyTorchTrackNetTracker(
+        weights_path="python/weights/tracknet-v4_best-model.pth",
+        threshold=0.2,
+    )
 
-    db = ReIDDatabase(dim=2048)
+    db = ReIDDatabase(dim=768)
     track_memory = TrackMemory()
 
     cap = cv2.VideoCapture(args.input)
@@ -122,6 +173,9 @@ def main():
         ret, frame = cap.read()
         if not ret:
             break
+
+        annotated_frame = frame.copy()
+
         results = model.track(
             frame,
             conf=args.conf,
@@ -131,91 +185,59 @@ def main():
             verbose=False,
             imgsz=args.imgsz,
         )
-        ball_track = model.track(
-            frame,
-            classes=[32],
-            imgsz=args.imgsz,
-            verbose=False,
-            conf=0.2,
-        )
 
-        annotated_frame = frame.copy()
+        if results[0].boxes is not None and results[0].boxes.id is not None:
+            boxes = results[0].boxes.xyxy.cpu().numpy()
+            track_ids = results[0].boxes.id.cpu().numpy().astype(int)
 
-        if results[0].boxes.id is None:
-            out.write(frame)
-            continue
+            for box, track_id in zip(boxes, track_ids):
+                x1, y1, x2, y2 = map(int, box)
 
-        boxes = results[0].boxes.xyxy.cpu().numpy()
-        track_ids = results[0].boxes.id.cpu().numpy().astype(int)
-
-        for box, track_id in zip(boxes, track_ids):
-            x1, y1, x2, y2 = map(int, box)
-
-            if track_id in yolo_to_global:
-                match_id = yolo_to_global[track_id]
-            else:
-                crop = frame[y1:y2, x1:x2]
-                if crop.size == 0 or is_blurry(crop):
-                    continue
-
-                emb = get_embedding(reid_model, crop)
-
-                track_memory.add(track_id, emb)
-                agg_emb = track_memory.get(track_id)
-
-                if agg_emb is None:
-                    match_id = "Pending..."
+                if track_id in yolo_to_global:
+                    match_id = yolo_to_global[track_id]
                 else:
-                    if db.index.ntotal == 0:
-                        db = ReIDDatabase(dim=len(agg_emb))
-                    match_id = db.match(agg_emb)
-                    if match_id is None:
-                        match_id = db.add(agg_emb)
+                    crop = frame[y1:y2, x1:x2]
+                    if crop.size == 0 or is_blurry(crop):
+                        match_id = "Blurry"
                     else:
-                        db.update(match_id, agg_emb)
+                        emb = get_dinov2_embedding(reid_model, crop)
 
-            cv2.putText(
-                annotated_frame,
-                f"ID {match_id}",
-                (x1, y1 - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 255, 0),
-                2
-            )
+                        track_memory.add(track_id, emb)
+                        agg_emb = track_memory.get(track_id)
 
-            cv2.rectangle(
-                annotated_frame,
-                (x1, y1),
-                (x2, y2),
-                (0, 255, 0),
-                2
-            )
+                        if agg_emb is None:
+                            match_id = "Pending..."
+                        else:
+                            match_id = db.match(agg_emb)
+                            if match_id is None:
+                                match_id = db.add(agg_emb)
+                            else:
+                                db.update(match_id, agg_emb)
+                        yolo_to_global[track_id] = match_id 
 
-        if ball_track[0].boxes is not None and len(ball_track[0].boxes) > 0:
-            boxes = ball_track[0].boxes.xyxy.cpu().numpy()
-            confs = ball_track[0].boxes.conf.cpu().numpy()
+                cv2.putText(
+                    annotated_frame,
+                    f"ID {match_id}",
+                    (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (0, 255, 0),
+                    2
+                )
 
-            box = boxes[np.argmax(confs)]
-            x1, y1, x2, y2 = map(int, box)
+                cv2.rectangle(
+                    annotated_frame,
+                    (x1, y1),
+                    (x2, y2),
+                    (0, 255, 0),
+                    2
+                )
 
-            cv2.putText(
-                annotated_frame,
-                f"Ball",
-                (x1, y1 - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (255, 0, 0),
-                2
-            )
+        ball_pos = tracknet.predict(frame)
 
-            cv2.rectangle(
-                annotated_frame,
-                (x1, y1),
-                (x2, y2),
-                (255, 0, 0),
-                2
-            )
+        if ball_pos is not None:
+            bx, by = ball_pos
+            cv2.circle(annotated_frame, (bx, by), 6, (0, 165, 255), -1)
 
         out.write(annotated_frame)
 

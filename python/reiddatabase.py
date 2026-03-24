@@ -4,46 +4,90 @@ import faiss
 from collections import defaultdict, deque
 
 class ReIDDatabase:
-    def __init__(self, dim=768):  # ViT embeddings often 768
+    def __init__(self, dim=768, alpha=0.1):
+        self.dim = dim
+        self.alpha = alpha
         self.index = faiss.IndexFlatIP(dim)
         self.player_ids = []
         self.embeddings = []
 
+
     def add(self, emb):
-        self.index.add(emb.reshape(1, -1))
-        new_id = len(self.player_ids)
-        self.player_ids.append(new_id)
-        self.embeddings.append([emb])
-        return new_id
+        emb = self._normalize(emb)
+        
+        player_id = self.next_id
+        self.next_id += 1
+        
+        self.prototypes[player_id] = emb
+        
+        # FAISS requires IDs to be 64-bit ints
+        self.index.add_with_ids(emb.reshape(1, -1), np.array([player_id], dtype=np.int64))
+        
+        return player_id
 
     def match(self, emb, threshold=0.9):
-        if len(self.player_ids) < 3:
+        if self.index.ntotal == 0:
             return None
 
+        emb = self._normalize(emb)
+
+        # Search for the top 1 closest prototype
         D, I = self.index.search(emb.reshape(1, -1), k=1)
 
-        if D[0][0] > threshold:
-            return self.player_ids[I[0][0]]
+        similarity = D[0][0]
+        matched_id = I[0][0]
+
+        if similarity > threshold:
+            return matched_id
         return None
 
     def update(self, player_id, emb):
-        self.embeddings[player_id].append(emb)
+        """
+        Updates the player's prototype using Exponential Moving Average (EMA).
+        This prevents 'drift' where a single blurry frame ruins the database ID.
+        """
+        if player_id not in self.prototypes:
+            return
 
-        # optional: keep last N embeddings
-        if len(self.embeddings[player_id]) > 20:
-            self.embeddings[player_id].pop(0)
+        emb = self._normalize(emb)
+
+        # 1. Calculate the new EMA prototype
+        old_proto = self.prototypes[player_id]
+        new_proto = (1.0 - self.alpha) * old_proto + self.alpha * emb
+        new_proto = self._normalize(new_proto)
+
+        # 2. Update dictionary storage
+        self.prototypes[player_id] = new_proto
+
+        # 3. Update FAISS (Remove old vector, add new vector with same ID)
+        self.index.remove_ids(np.array([player_id], dtype=np.int64))
+        self.index.add_with_ids(new_proto.reshape(1, -1), np.array([player_id], dtype=np.int64))
+
+    def _normalize(self, emb):
+        """Force L2 normalization. FAISS Inner Product only acts as Cosine Similarity if vectors are normalized."""
+        norm = np.linalg.norm(emb)
+        if norm > 0:
+            return (emb / norm).astype("float32")
+        return emb.astype("float32")
 
 
 class TrackMemory:
-    def __init__(self):
-        self.buffer = defaultdict(lambda: deque(maxlen=10))
+    def __init__(self, history=10):
+        self.buffer = defaultdict(lambda: deque(maxlen=history))
 
     def add(self, track_id, emb):
         self.buffer[track_id].append(emb)
 
-    def get(self, track_id):
-        if len(self.buffer[track_id]) < 5:
+    def get(self, track_id, min_frames=5):
+        # we still want to try and ID them.
+        if len(self.buffer[track_id]) < min_frames:
             return None
+
+        # Average the embeddings in the buffer to create a robust initial shot
         avg = np.mean(self.buffer[track_id], axis=0)
-        avg /= np.linalg.norm(avg)
-        return avg
+
+        norm = np.linalg.norm(avg)
+        if norm > 0:
+            avg /= norm
+
+        return avg.astype("float32")
