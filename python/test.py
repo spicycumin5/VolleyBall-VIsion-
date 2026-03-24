@@ -25,6 +25,8 @@ from rich.progress import track as track
 from ultralytics import YOLO
 import torch
 from reiddatabase import ReIDDatabase, TrackMemory
+import torch
+from collections import deque
 
 parser = argparse.ArgumentParser()
 
@@ -36,7 +38,7 @@ parser.add_argument('--show_conf', default=False, action='store_true',
                     help='Whether to show the confidence scores')
 parser.add_argument('--show_labels', default=False,
                     action='store_true', help='Whether to show the labels')
-parser.add_argument('--conf', type=float, default=0.5,
+parser.add_argument('--conf', type=float, default=0.2,
                     help='Object confidence threshold for detection')
 parser.add_argument('--classes', nargs='+', default=None,
                     help='List of classes to detect')
@@ -55,9 +57,9 @@ def load_reid_model():
     from fastreid.engine import DefaultPredictor
 
     cfg = get_cfg()
-    cfg.merge_from_file("fast_reid/configs/MSMT17/vit_transreid.yml")  # ViT config
-    cfg.MODEL.WEIGHTS = "vit_transreid.pth"  # pretrained weights
-    cfg.MODEL.DEVICE = "cuda"
+    cfg.merge_from_file("python/fast-reid/configs/MSMT17/sbs_R101-ibn.yml")
+    cfg.MODEL.WEIGHTS = "python/weights/msmt_sbs_R101-ibn.pth"
+    cfg.MODEL.DEVICE = "cpu"
 
     predictor = DefaultPredictor(cfg)
     return predictor
@@ -65,13 +67,26 @@ def load_reid_model():
 
 def get_embedding(model, crop):
     crop = cv2.resize(crop, (256, 512))  # standard ReID size
+    crop = crop[:, :, ::-1]
+    crop = crop.astype("float32") / 255.0
+
+    mean = np.array([0.485, 0.456, 0.406])
+    std  = np.array([0.229, 0.224, 0.225])
+    crop = (crop - mean) / std
+    
+    crop = crop.transpose(2, 0, 1)
+    tensor = torch.as_tensor(crop.astype("float32")).unsqueeze(0)
 
     with torch.no_grad():
-        outputs = model(crop)
-    emb = outputs["feat"].cpu().numpy().flatten()
+        outputs = model(tensor)
 
-    emb /= np.linalg.norm(emb)
-    return emb
+    emb = outputs.cpu().numpy()[0]
+
+    norm = np.linalg.norm(emb)
+    if norm > 0:
+        emb /= norm
+
+    return emb.astype("float32")
 
 
 def is_blurry(img, threshold=50):
@@ -83,7 +98,7 @@ def main():
     model = YOLO(args.model)
     reid_model = load_reid_model()
 
-    db = ReIDDatabase(dim=768)
+    db = ReIDDatabase(dim=2048)
     track_memory = TrackMemory()
 
     cap = cv2.VideoCapture(args.input)
@@ -111,6 +126,13 @@ def main():
             persist=True,
             verbose=False,
             imgsz=args.imgsz,
+        )
+        ball_track = model.track(
+            frame,
+            classes=[32],
+            imgsz=args.imgsz,
+            verbose=False,
+            conf=0.2,
         )
 
         annotated_frame = frame.copy()
@@ -140,6 +162,8 @@ def main():
                 if agg_emb is None:
                     match_id = "Pending..."
                 else:
+                    if db.index.ntotal == 0:
+                        db = ReIDDatabase(dim=len(agg_emb))
                     match_id = db.match(agg_emb)
                     if match_id is None:
                         match_id = db.add(agg_emb)
@@ -161,6 +185,31 @@ def main():
                 (x1, y1),
                 (x2, y2),
                 (0, 255, 0),
+                2
+            )
+
+        if ball_track[0].boxes is not None and len(ball_track[0].boxes) > 0:
+            boxes = ball_track[0].boxes.xyxy.cpu().numpy()
+            confs = ball_track[0].boxes.conf.cpu().numpy()
+
+            box = boxes[np.argmax(confs)]
+            x1, y1, x2, y2 = map(int, box)
+
+            cv2.putText(
+                annotated_frame,
+                f"Ball",
+                (x1, y1 - 10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (255, 0, 0),
+                2
+            )
+
+            cv2.rectangle(
+                annotated_frame,
+                (x1, y1),
+                (x2, y2),
+                (255, 0, 0),
                 2
             )
 
