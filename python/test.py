@@ -61,7 +61,7 @@ parser.add_argument('--imgsz', type=int, default=640,
                     help='Image size for YOLO. 640, 1280, and 1920 are good')
 parser.add_argument('--heatmap_conf', type=int, default=0.5,
                     help='Confidence for the ball tracker')
-parser.add_argument('--heatmap_alpha', type=float, default=0.3,
+parser.add_argument('--heatmap_alpha', type=float, default=0.0,
                     help='Alpha for heatmap overlay')
 
 args = parser.parse_args()
@@ -163,10 +163,15 @@ def get_dinov2_embedding(model, crop_bgr):
 
 def main():
     """Do the thing."""
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = 0 if torch.cuda.is_available() else "cpu"
+    # https://github.com/mikel-brostrom/boxmot/blob/59784c49eeec19736b48e034382d393d764d611d/boxmot/trackers/botsort/botsort.py#L21
     tracker = BotSort(
-        model_weights=Path('osnet_x0_25_msmt17.pt'),
-        device=device
+        reid_weights=Path('osnet_ain_x1_0_msmt17.pt'),
+        device=device,
+        half=False,
+        match_thresh=0.8,
+        proximity_thresh=0.7,
+        appearance_thresh=0.5,
     )
     model = YOLO(args.model)
     reid_model = load_dinov2_model()
