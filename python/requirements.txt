@@ -1,3 +1,5 @@
 opencv-python
 rich
 ultralytics
+faiss-cpu
+faiss-gpu
