@@ -44,6 +44,19 @@ class ReIDDatabase:
             return matched_id
         return None
 
+    def match_with_score(self, emb, threshold=0.45):
+        if self.index.ntotal == 0:
+            return None
+        emb = self._normalize(emb)
+        D, I = self.index.search(emb.reshape(1, -1), k=1)
+
+        similarity = D[0][0]
+        matched_id = int(I[0][0])
+
+        if similarity > threshold:
+            return matched_id, similarity
+        return None
+
     def update(self, player_id, emb):
         """
         Updates the player's prototype using Exponential Moving Average (EMA).
