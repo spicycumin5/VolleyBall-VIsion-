@@ -1,0 +1,15 @@
+@import 'tailwindcss';
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,200..1000;1,6..12,200..1000&family=Raleway:ital,wght@0,100..900;1,100..900&family=Rubik:ital,wght@0,300..900;1,300..900&display=swap');
+
+@theme {
+  --color-app-pink: #E61556;
+  --color-app-dark-blue: #236192;
+  --color-app-blue: #1C69A5;
+  --color-app-white: #F4EBEC;
+  --color-app-yellow: #F7D025;
+  --color-app-red: #EF3340;
+  --color-app-dark-red: #9B2242;
+  --color-app-ice-blue: #8DC8E8;
+  --color-app-orange: "orange-300";
+  --font-sans: 'Raleway', sans-serif;
+}
