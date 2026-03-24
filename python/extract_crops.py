@@ -33,8 +33,8 @@ for video_path in video_files:
         stream=True,
         classes=[0],
         persist=True,
-        verbose=False,
-        imgsz=args.imgsz,
+        verbose=True,
+        imgsz=1920,
     )
     
     for r in results:
