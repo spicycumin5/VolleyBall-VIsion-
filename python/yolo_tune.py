@@ -4,6 +4,7 @@
 import os
 import shutil
 import random
+import re
 from pathlib import Path
 from ultralytics import YOLO
 
@@ -41,19 +42,35 @@ def prepare_yolo_dataset(images_dir, labels_dir, output_dir, split_ratio=0.8):
     def copy_files(image_list, split_type):
         valid_count = 0
         for img_name in image_list:
-            # Swap the .jpg extension for .txt to find the matching label
-            txt_name = os.path.splitext(img_name)[0] + '.txt'
+            
+            # --- FIX #1: The Off-By-One Index ---
+            # Extract the number from the image (e.g., "frame_000001.jpg" -> 1)
+            match = re.search(r'frame_(\d+)', img_name)
+            if match:
+                img_num = int(match.group(1))
+                txt_num = img_num - 1 # Subtract 1 to find the CVAT file
+                src_txt_name = f"frame_{txt_num:06d}.txt"
+            else:
+                src_txt_name = os.path.splitext(img_name)[0] + '.txt'
             
             src_img = os.path.join(images_dir, img_name)
-            src_txt = os.path.join(labels_dir, txt_name)
+            src_txt = os.path.join(labels_dir, src_txt_name)
             
-            # Only copy if the image actually has a corresponding text file!
             if os.path.exists(src_txt):
+                # Copy the image normally
                 shutil.copy(src_img, os.path.join(output_dir, 'images', split_type, img_name))
-                shutil.copy(src_txt, os.path.join(output_dir, 'labels', split_type, txt_name))
+                
+                # --- FIX #2: The Destination Filename ---
+                # Save the text file with the exact same name as the image
+                dest_txt_name = os.path.splitext(img_name)[0] + '.txt'
+                dest_txt = os.path.join(output_dir, 'labels', split_type, dest_txt_name)
+                
+                # We just copy the file directly, keeping CVAT's original 0 and 1 classes!
+                shutil.copy(src_txt, dest_txt)
+                
                 valid_count += 1
             else:
-                print(f"Warning: No label found for {img_name}. Skipping.")
+                print(f"Warning: No matching label '{src_txt_name}' found for '{img_name}'. Skipping.")
         return valid_count
 
     train_count = copy_files(train_images, 'train')
@@ -69,8 +86,8 @@ val: images/val
 
 # Classes
 names:
-  0: player
-  1: ball
+  0: person
+  1: sports ball
 """
     yaml_path = os.path.join(output_dir, 'data.yaml')
     with open(yaml_path, 'w') as f:
@@ -99,13 +116,13 @@ def train_yolo_model(yaml_path, epochs=50, imgsz=1920):
         data=os.path.abspath(yaml_path),
         epochs=epochs,
         imgsz=imgsz,
-        batch=1,
-        workers=64,
-        # device=[0, 1, 2, 3],
-        device=0,
+        batch=2,
+        # workers=64,
+        # device=[1, 2, 3, 4],
+        device=7,
         project=project_path,
         # name="custom_run",
-        # exist_ok=True
+        box=10.0,
     )
     
     print("\n--- Training Complete! ---")

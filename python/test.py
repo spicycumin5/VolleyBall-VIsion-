@@ -52,7 +52,7 @@ parser.add_argument('--show_conf', default=False, action='store_true',
                     help='Whether to show the confidence scores')
 parser.add_argument('--conf', type=float, default=0.2,
                     help='Object confidence threshold for detection')
-parser.add_argument('--imgsz', type=int, default=640,
+parser.add_argument('--imgsz', type=int, default=1920,
                     help='Image size for YOLO. 640, 1280, and 1920 are good')
 parser.add_argument('--heatmap_conf', type=int, default=0.5,
                     help='Confidence for the ball tracker')
@@ -61,43 +61,6 @@ parser.add_argument('--heatmap_alpha', type=float, default=0.0,
 parser.add_argument('--json_output', default=None, help="Path to output json")
 
 args = parser.parse_args()
-
-
-def load_reid_model():
-    from fastreid.config import get_cfg
-    from fastreid.engine import DefaultPredictor
-
-    cfg = get_cfg()
-    cfg.merge_from_file("python/weights/sbs_R101-ibn.yml")
-    cfg.MODEL.WEIGHTS = "python/weights/msmt_sbs_R101-ibn.pth"
-    cfg.MODEL.DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-
-    predictor = DefaultPredictor(cfg)
-    return predictor
-
-
-def get_embedding(model, crop):
-    crop = cv2.resize(crop, (256, 512))  # standard ReID size
-    crop = crop[:, :, ::-1]
-    crop = crop.astype("float32") / 255.0
-
-    mean = np.array([0.485, 0.456, 0.406])
-    std = np.array([0.229, 0.224, 0.225])
-    crop = (crop - mean) / std
-
-    crop = crop.transpose(2, 0, 1)
-    tensor = torch.as_tensor(crop.astype("float32")).unsqueeze(0)
-
-    with torch.no_grad():
-        outputs = model(tensor)
-
-    emb = outputs.cpu().numpy()[0]
-
-    norm = np.linalg.norm(emb)
-    if norm > 0:
-        emb /= norm
-
-    return emb.astype("float32")
 
 
 def is_blurry(img, threshold=50):
@@ -203,6 +166,107 @@ def is_motion_consistent(track_id, new_center, max_jump=150):
     return dist < max_jump
 
 
+def track_players(frame, player_dets, tracker, annotated_frame):
+    """Processes YOLO player detections through BoxMOT for ID tracking."""
+    current_player_boxes = []
+    frame_players_data = []
+
+    if len(player_dets) > 0:
+        # BoxMOT expects array of [x1, y1, x2, y2, conf, cls]
+        tracks = tracker.update(player_dets, frame) 
+    else:
+        tracks = np.empty((0, 8))
+
+    if len(tracks) > 0:
+        boxes = tracks[:, :4]
+        track_ids = tracks[:, 4].astype(int)
+        confs = tracks[:, 5]
+
+        for box, track_id, conf in zip(boxes, track_ids, confs):
+            x1, y1, x2, y2 = map(int, box)
+            current_player_boxes.append((x1, y1, x2, y2))
+            center = get_center((x1, y1, x2, y2))
+
+            # Motion consistency checks
+            if not is_motion_consistent(track_id, center):
+                continue
+
+            if is_far_player((x1, x2, y1, y2)):
+                color = (0, 165, 255)
+                label = f"P-{track_id} (far)"
+
+                if len(track_history[track_id]) > 0:
+                    prev_center = track_history[track_id][-1]
+                    if motion_distance(prev_center, center) > 80:
+                        continue
+            else:
+                color = (0, 255, 0)
+                label = f"P-{track_id}"
+
+            # Log history and draw
+            track_history[track_id].append(center)
+            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(annotated_frame, label, (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+
+            frame_players_data.append({
+                "tid": int(track_id),
+                "box": [x1, y1, x2, y2],
+                "conf": float(conf)
+            })
+
+    return current_player_boxes, frame_players_data
+
+
+def track_ball(ball_dets, kalman, current_player_boxes, annotated_frame, missing_frames, max_coast_frames):
+    """Processes YOLO ball detections, applying Kalman physics for dropped frames."""
+    final_ball_pos = None
+    is_predicted = False
+    ball_conf = 0.0
+    bx, by = None, None
+
+    # 1. Extract the best YOLO ball detection
+    if len(ball_dets) > 0:
+        # Sort by confidence descending and grab the best one
+        ball_dets = ball_dets[ball_dets[:, 4].argsort()[::-1]]
+        x1, y1, x2, y2, ball_conf, cls = ball_dets[0]
+        bx, by = int((x1 + x2) / 2), int((y1 + y2) / 2)
+
+    # 2. Apply Kalman Smoothing / Coasting
+    if bx is not None and by is not None:
+        if not kalman.is_tracking and is_on_player(bx, by, current_player_boxes):
+            pass
+        else:
+            kalman.correct(bx, by)
+            final_ball_pos = kalman.predict()
+            missing_frames = 0
+    else:
+        missing_frames += 1
+        if missing_frames <= max_coast_frames:
+            final_ball_pos = kalman.predict()
+            is_predicted = True
+        else:
+            kalman.reset()
+
+    # 3. Draw Results
+    if final_ball_pos is not None:
+        bx, by = int(final_ball_pos[0]), int(final_ball_pos[1])
+        color = (255, 0, 255) if is_predicted else (0, 165, 255)
+
+        cv2.circle(annotated_frame, (bx, by), 6, color, -1)
+        cv2.putText(
+            annotated_frame,
+            "Ball (Physics)" if is_predicted else "Ball",
+            (bx - 15, by - 15),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            color,
+            2
+        )
+
+    return final_ball_pos, ball_conf, missing_frames
+
+
 def main():
     """Do the thing."""
     device = 0 if torch.cuda.is_available() else "cpu"
@@ -211,16 +275,16 @@ def main():
         reid_weights=Path('osnet_ibn_x1_0_msmt17.pt'),
         device=device,
         half=False,
-        match_thresh=0.9,
+        match_thresh=0.95,
         proximity_thresh=0.86,
-        appearance_thresh=0.5,
+        appearance_thresh=0.7,
     )
     model = YOLO(args.model)
 
-    tracknet = PyTorchTrackNetTracker(
-        weights_path="python/weights/tracknet-v4_best-model.pth",
-        threshold=args.heatmap_conf,
-    )
+    # tracknet = PyTorchTrackNetTracker(
+    #     weights_path="python/weights/tracknet-v4_best-model.pth",
+    #     threshold=args.heatmap_conf,
+    # )
     kalman = KalmanBallTracker()
 
     missing_frames = 0
@@ -249,108 +313,35 @@ def main():
 
         annotated_frame = frame.copy()
 
+        # 1. Run YOLO ONCE to find BOTH Players (0) and Ball (1)
         results = model.predict(
             frame,
             conf=args.conf,
-            classes=[0],
+            classes=[0, 1],
             verbose=False,
             imgsz=args.imgsz,
             iou=0.95,
         )
-        current_player_boxes = []
-        frame_players_data = []
+
+        # 2. Split the YOLO detections into two arrays based on class
         dets = results[0].boxes.data.cpu().numpy()
+        player_dets = dets[dets[:, 5] == 0] if len(dets) > 0 else np.empty((0, 6))
+        ball_dets = dets[dets[:, 5] == 1] if len(dets) > 0 else np.empty((0, 6))
 
-        if len(dets) > 0:
-            tracks = tracker.update(dets, frame)  # Returns [x1, y1, x2, y2, id, conf, cls, ind]
-        else:
-            tracks = np.empty((0, 8))
+        # 3. Track Players via BoxMOT
+        current_player_boxes, frame_players_data = track_players(
+            frame, player_dets, tracker, annotated_frame
+        )
 
-        if len(tracks) > 0:
-            boxes = tracks[:, :4]
-            track_ids = tracks[:, 4].astype(int)
-            confs = tracks[:, 5]
+        # 4. Track Ball via Kalman Physics
+        final_ball_pos, ball_conf, missing_frames = track_ball(
+            ball_dets, kalman, current_player_boxes, annotated_frame, missing_frames, MAX_COAST_FRAMES
+        )
 
-            for box, track_id, conf in zip(boxes, track_ids, confs):
-                x1, y1, x2, y2 = map(int, box)
-                current_player_boxes.append((x1, y1, x2, y2))
-
-                center = get_center((x1, y1, x2, y2))
-
-                # Draw Box & ID
-                if not is_motion_consistent(track_id, center):
-                    continue
-
-                if is_far_player((x1, x2, y1, y2)):
-                    color = (0, 165, 255)
-                    label = f"P-{track_id} (far)"
-
-                    if len(track_history[track_id]) > 0:
-                        prev_center = track_history[track_id][-1]
-                        if motion_distance(prev_center, center) > 80:
-                            continue
-
-                else:
-                    color = (0, 255, 0)
-                    label = f"P-{track_id}"
-
-                cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
-                cv2.putText(annotated_frame, label, (x1, y1 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-
-                frame_players_data.append({
-                    "tid": int(track_id),
-                    "box": [x1, y1, x2, y2],
-                    "conf": float(conf)
-                })
-
-        ball_pos = tracknet.predict(frame)
-        if tracknet.current_heatmap is not None:
-            annotated_frame = draw_heatmap_overlay(
-                annotated_frame,
-                tracknet.current_heatmap,
-                alpha=args.heatmap_alpha,
-            )
-        final_ball_pos = None
-        is_predicted = False
-        ball_conf = 0.0
-
-        if ball_pos is not None:
-            bx, by, ball_conf = ball_pos
-            if not kalman.is_tracking and is_on_player(bx, by, current_player_boxes):
-                pass
-            else:
-                kalman.correct(bx, by)
-                final_ball_pos = kalman.predict()
-                missing_frames = 0
-
-        if final_ball_pos is None:
-            missing_frames += 1
-            if missing_frames <= MAX_COAST_FRAMES:
-                final_ball_pos = kalman.predict()
-                is_predicted = True
-            else:
-                kalman.reset()
-
-        if final_ball_pos is not None:
-            bx, by = final_ball_pos
-            color = (255, 0, 255) if is_predicted else (0, 165, 255)
-
-            cv2.circle(annotated_frame, (bx, by), 6, color, -1)
-
-            cv2.putText(
-                annotated_frame,
-                "Ball (Physics)" if is_predicted else "Ball",
-                (bx - 15, by - 15),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                color,
-                2
-            )
-
+        # 5. Output
         out.write(annotated_frame)
-
         write_json_frame(json_file, frame_idx, final_ball_pos, frame_players_data, ball_conf)
+
 
     cap.release()
     out.release()
