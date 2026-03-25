@@ -14,8 +14,7 @@ function VodReviewPage( { videoRef }){
                 <Header />
                 <div className="flex flex-row">
                     <div className="flex-1">
-                        <VideoAnnotator url={'/videos/one_play.mp4'} annotations={'./annotations/one_play.json'} />
-                        <VideoPlayer url={'/videos/one_play.mp4'} />
+                        <VideoAnnotator url={'/videos/one_play.mp4'} annotationUrl={'/annotations/one_play.json'} />
                     </div>
                     <div className="flex-1 bg-amber-100">
 

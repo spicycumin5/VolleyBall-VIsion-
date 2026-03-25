@@ -113,8 +113,29 @@ function VideoAnnotator({ url, annotationUrl }) {
     }
 
     // Scale factors: annotation pixel coords → canvas coords
-    const sx = cw / videoSize.w;
-    const sy = ch / videoSize.h;
+    // The <video> element includes the controls bar, so the actual
+    // picture area is smaller than the element. Compute the picture
+    // rect using the intrinsic aspect ratio.
+    const videoAspect = videoSize.w / videoSize.h;
+    const elemAspect = cw / ch;
+
+    let picW, picH, offsetX, offsetY;
+    if (elemAspect > videoAspect) {
+      // element is wider than video — pillarboxed (black bars on sides)
+      picH = ch;
+      picW = ch * videoAspect;
+      offsetX = (cw - picW) / 2;
+      offsetY = 0;
+    } else {
+      // element is taller than video — letterboxed (black bar at bottom, i.e. controls)
+      picW = cw;
+      picH = cw / videoAspect;
+      offsetX = 0;
+      offsetY = 0; // video picture sits at top, controls fill the gap below
+    }
+
+    const sx = picW / videoSize.w;
+    const sy = picH / videoSize.h;
 
     // ── Ball trail (last N positions) ────────────────────────
     if (showTrail) {
@@ -124,7 +145,7 @@ function VideoAnnotator({ url, annotationUrl }) {
       for (let i = startIdx; i <= frameIdx; i++) {
         const f = annotationsRef.current[i];
         if (f?.ball && f.ball.conf > 0 && f.ball.x >= 0 && f.ball.y >= 0) {
-          trailPts.push({ x: f.ball.x * sx, y: f.ball.y * sy, age: frameIdx - i });
+          trailPts.push({ x: f.ball.x * sx + offsetX, y: f.ball.y * sy + offsetY, age: frameIdx - i });
         }
       }
       if (trailPts.length > 1) {
@@ -146,8 +167,8 @@ function VideoAnnotator({ url, annotationUrl }) {
       for (const p of data.players) {
         if (p.conf < minConf) continue;
         const [x1, y1, x2, y2] = p.box;
-        const bx = x1 * sx;
-        const by = y1 * sy;
+        const bx = x1 * sx + offsetX;
+        const by = y1 * sy + offsetY;
         const bw = (x2 - x1) * sx;
         const bh = (y2 - y1) * sy;
         const color = getPlayerColor(p.tid);
@@ -182,8 +203,8 @@ function VideoAnnotator({ url, annotationUrl }) {
 
     // ── Ball marker ──────────────────────────────────────────
     if (showBall && data.ball && data.ball.conf > 0 && data.ball.x >= 0 && data.ball.y >= 0) {
-      const bx = data.ball.x * sx;
-      const by = data.ball.y * sy;
+      const bx = data.ball.x * sx + offsetX;
+      const by = data.ball.y * sy + offsetY;
       const radius = 8;
 
       // Outer glow
@@ -218,12 +239,11 @@ function VideoAnnotator({ url, annotationUrl }) {
   return (
     <div className="flex flex-col gap-3 w-full max-w-5xl">
       {/* ── Video + Canvas overlay ── */}
-      <div className="pl-2">
+      <div className="relative inline-block bg-black rounded-lg overflow-hidden shadow-xl">
         <video
           ref={videoRef}
           className="block w-full"
           controls
-          width="80%"
           playsInline
         >
           <source src={url} type="video/mp4" />
@@ -236,7 +256,7 @@ function VideoAnnotator({ url, annotationUrl }) {
         />
       </div>
 
-      ── Controls ──
+      {/* ── Controls ── */}
       <div className="flex flex-wrap items-center gap-2 px-1">
         <Toggle on={showPlayers} onToggle={() => setShowPlayers((v) => !v)} label="Players" color="#4ECDC4" />
         <Toggle on={showBall} onToggle={() => setShowBall((v) => !v)} label="Ball" color="#FFDC28" />
