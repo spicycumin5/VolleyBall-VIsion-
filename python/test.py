@@ -2,6 +2,8 @@
 A basic ahh test file.
 
 I'll make it prettier later I promise (:
+
+Testing if Mutagen is working (again)
 """
 import sys
 import collections
@@ -35,7 +37,6 @@ from rich.progress import track as track
 from ultralytics import YOLO
 from PIL import Image
 from boxmot import BotSort
-
 
 from reiddatabase import ReIDDatabase, TrackMemory
 from tracknet import PyTorchTrackNetTracker, draw_heatmap_overlay
@@ -211,8 +212,8 @@ def main():
         device=device,
         half=False,
         match_thresh=0.9,
-        proximity_thresh=0.8,
-        appearance_thresh=0.6,
+        proximity_thresh=0.86,
+        appearance_thresh=0.5,
     )
     model = YOLO(args.model)
 
@@ -254,6 +255,7 @@ def main():
             classes=[0],
             verbose=False,
             imgsz=args.imgsz,
+            iou=0.95,
         )
         current_player_boxes = []
         frame_players_data = []
