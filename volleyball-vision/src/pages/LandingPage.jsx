@@ -3,7 +3,7 @@
 // Evan Inrig
 
 import React from 'react';
-import BackgroundVideo from '../components/BackgroundVideo';
+import BackgroundVideo from '../components/LandingPage/BackgroundVideo';
 
 function LandingPage(){
     return (

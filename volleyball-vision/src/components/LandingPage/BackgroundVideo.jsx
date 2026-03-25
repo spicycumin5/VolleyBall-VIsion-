@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import videos from '../assets/videos/volleyball-footage.mp4';
+import videos from '../../assets/videos/volleyball-footage.mp4';
 
 function BackgroundVideo(){
     const videoRef = useRef(null);

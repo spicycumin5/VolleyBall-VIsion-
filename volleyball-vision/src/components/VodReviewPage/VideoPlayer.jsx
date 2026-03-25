@@ -1,5 +1,5 @@
 import React from 'react';
-import videos from '../assets/videos/volleyball-sample.mp4';
+import videos from '../../assets/videos/volleyball-sample.mp4';
 
 
 function VideoPlayer({ mp4, webm }){

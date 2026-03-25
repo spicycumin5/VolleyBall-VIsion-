@@ -1,8 +1,10 @@
 import React from 'react';
-import VideoPlayer from '../components/VideoPlayer';
-import Header from '../components/Header';
+import VideoPlayer from '../components/VodReviewPage/VideoPlayer';
+import Header from '../components/VodReviewPage/Header';
 
-function VodReviewPage(){
+function VodReviewPage( { videoRef }){
+
+    
     return(
         <div className="min-h-screen min-w-screen bg-app-ice-blue gap-0">
             <div className="flex flex-col">
