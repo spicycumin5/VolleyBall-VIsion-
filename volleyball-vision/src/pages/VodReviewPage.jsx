@@ -2,6 +2,9 @@ import React from 'react';
 import VideoPlayer from '../components/VodReviewPage/VideoPlayer';
 import Header from '../components/VodReviewPage/Header';
 
+import VideoAnnotator from '../components/VodReviewPage/VideoAnnotator';
+// import annotations from '../../../demo/one_play.json'
+
 function VodReviewPage( { videoRef }){
 
     
@@ -11,7 +14,8 @@ function VodReviewPage( { videoRef }){
                 <Header />
                 <div className="flex flex-row">
                     <div className="flex-1">
-                        <VideoPlayer mp4="./assets/videos/volleyball-sample.mp4"/>
+                        <VideoAnnotator url={'/videos/one_play.mp4'} annotations={'./annotations/one_play.json'} />
+                        <VideoPlayer url={'/videos/one_play.mp4'} />
                     </div>
                     <div className="flex-1 bg-amber-100">
 

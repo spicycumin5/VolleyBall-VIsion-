@@ -22,7 +22,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
  
 from db import VolleyballDB
-from schemas import (
+from api.schemas import (
     VideoCreate, VideoOut,
     RallyCreate, RallyOut, RallyDetail,
     BallDetectionBatch, BallPathPoint,
