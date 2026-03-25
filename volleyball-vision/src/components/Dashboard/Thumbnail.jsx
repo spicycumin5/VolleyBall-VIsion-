@@ -14,8 +14,8 @@ function Thumbnail({ video={
             onClick={() => navigate(`/video/${video.id}`)}
         >
             <img src={video.src} className='rounded-xl'/>
-            <div>
-                <h1> {video.title}</h1>
+            <div className='flex gap-2 items-center'>
+                <h1 className='text-xl font-semibold'> {video.title}</h1>
                 <h2> {video.date} </h2>
             </div>
         </div>

@@ -4,6 +4,7 @@
 
 import React from 'react';
 import Toolbar from '../components/Dashboard/Toolbar';
+import Header from '../components/VodReviewPage/Header';
 import Thumbnail from '../components/Dashboard/Thumbnail';
 
 function Dashboard(){
@@ -28,13 +29,13 @@ function Dashboard(){
         
         {/* Fixed Header */}
         <div className="flex-none z-10">
-            <Toolbar />
+            <Header />
         </div>
 
         <div className="flex flex-row flex-1 overflow-hidden">
 
             {/* Fixed Left Bar */}
-            <div className="flex-none sm:hidden md:block md:w-1/5 rounded-tr-xl bg-white overflow-y-auto">
+            <div className="flex-none sm:hidden md:block md:w-1/5 rounded-tr-xl bg-app-dark-blue/70 overflow-y-auto">
                 02
             </div>
 
