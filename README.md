@@ -29,7 +29,13 @@ For running, make sure to `source .venv/bin/activate` to be in the virtual envir
 Download `msmt_sbs_R101-ibn.pth` to `python/weights` to make `test.py` work.
 ## For the website
 
-To run the site, navigate to the volleyball-vision file. Currently we are running the project with Vite given the scope of the project. Install the dependencies via `npm i`. Afterwords, you can locally host the project using `npm run dev` and navigating to the localhost your terminal displays. There are **curently** 3 pages the site uses: a landing page, a homepage to browse videos and upload, and a specific video page. 
+To run the site, navigate to the **frontend** file:
+` cd frontend `
+Currently we are running the project with Vite given the scope of the project. 
+Install the dependencies using `npm i`. 
+Afterwards, you can locally host the project using `npm run dev` and navigating to the localhost your terminal displays. 
+
+There are **curently** 3 pages the site uses: a landing page, a homepage to browse videos and upload, and a specific video page. 
 Pages can be accessed either in-site via navigation or via url like so (assuming 3000 as a baseline):
 Landing page: `http://localhost:3000`
 Homepage: `http://localhost:3000/home`

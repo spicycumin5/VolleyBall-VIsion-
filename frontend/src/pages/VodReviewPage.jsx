@@ -1,9 +1,7 @@
 import React from 'react';
 import VideoPlayer from '../components/VodReviewPage/VideoPlayer';
 import Header from '../components/VodReviewPage/Header';
-
 import VideoAnnotator from '../components/VodReviewPage/VideoAnnotator';
-// import annotations from '../../../demo/one_play.json'
 
 function VodReviewPage( { videoRef }){
 
