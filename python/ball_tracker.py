@@ -6,10 +6,11 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 class KalmanBallTracker:
-    def __init__(self):
+    def __init__(self, delta_t=1 / 30, gravity=1200.0):
         # State Vector: [x, y, dx, dy] (Position and Velocity)
         # Measurement Vector: [x, y] (What TrackNet actually sees)
         self.kf = cv2.KalmanFilter(4, 2)
+        self.gravity = np.array([[np.float32(gravity)]], dtype=np.float32)
 
         # Measurement Matrix (Translates state to measurement)
         self.kf.measurementMatrix = np.array([
@@ -17,28 +18,42 @@ class KalmanBallTracker:
             [0, 1, 0, 0]
         ], np.float32)
 
-        # State Transition Matrix (Physics Engine: x_new = x + dx, y_new = y + dy)
-        self.kf.transitionMatrix = np.array([
-            [1, 0, 1, 0],
-            [0, 1, 0, 1],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
-        ], np.float32)
-
-        # Process Noise (How much we trust the physics - lower means smoother but slower to turn)
-        self.kf.processNoiseCov = np.eye(4, dtype=np.float32) * 0.03
+        self.set_delta_t(delta_t)
 
         # Measurement Noise (How much we trust TrackNet - lower means we snap to the visual data immediately)
         self.kf.measurementNoiseCov = np.eye(2, dtype=np.float32) * 1e-4
 
         self.is_tracking = False
 
+    def set_delta_t(self, delta_t):
+        dt = max(float(delta_t), 1e-3)
+
+        # State Transition Matrix (Physics Engine: x_new = x + dx * dt, y_new = y + dy * dt)
+        self.kf.transitionMatrix = np.array([
+            [1, 0, dt, 0],
+            [0, 1, 0, dt],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ], np.float32)
+
+        # Constant-acceleration control input for gravity.
+        self.kf.controlMatrix = np.array([
+            [0.0],
+            [0.5 * dt * dt],
+            [0.0],
+            [dt]
+        ], np.float32)
+
+        q_pos = max(0.03 * dt * dt, 1e-4)
+        q_vel = max(0.03 * dt, 1e-4)
+        self.kf.processNoiseCov = np.diag([q_pos, q_pos, q_vel, q_vel]).astype(np.float32)
+
     def predict(self):
         """Advances the physics model by one frame and returns the predicted (x, y)."""
         if not self.is_tracking:
             return None
 
-        prediction = self.kf.predict()
+        prediction = self.kf.predict(self.gravity)
         return (int(prediction[0]), int(prediction[1]))
 
     def correct(self, x, y):
@@ -59,11 +74,13 @@ class KalmanBallTracker:
 
 
 class MultiBallTracker:
-    def __init__(self, max_coast_frames=20, distance_thresh=150):
+    def __init__(self, max_coast_frames=20, distance_thresh=150, fps=30.0, gravity=1200.0):
         self.tracks = {}
         self.next_id = 1
         self.max_coast_frames = max_coast_frames
         self.distance_thresh = distance_thresh
+        self.delta_t = 1.0 / fps if fps and fps > 0 else 1.0 / 30.0
+        self.gravity = gravity
 
     def update(self, ball_dets):
         # 1. Parse Detections
@@ -80,6 +97,7 @@ class MultiBallTracker:
         # 2. Predict existing tracks using their Kalmans
         track_preds = []
         for tid in active_ids:
+            self.tracks[tid]['kalman'].set_delta_t(self.delta_t)
             pred = self.tracks[tid]['kalman'].predict()
             track_preds.append(pred)
         track_preds = np.array(track_preds)
@@ -125,7 +143,7 @@ class MultiBallTracker:
         # 6. Spawn New Tracks
         for c in unmatched_dets:
             cx, cy = det_centers[c]
-            new_kalman = KalmanBallTracker()
+            new_kalman = KalmanBallTracker(delta_t=self.delta_t, gravity=self.gravity)
             new_kalman.correct(cx, cy)
             
             self.tracks[self.next_id] = {
