@@ -42,7 +42,7 @@ function Dashboard(){
             {/* Scrollable Videos Grid */}
             <div className="flex-1 grid overflow-y-auto sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 gap-2 px-4 py-1 content-start">
                 {videos.map((video) => (
-                    <Thumbnail video={video} />
+                    <Thumbnail key={video.id} video={video} />
                 ))}
             </div>
         </div>

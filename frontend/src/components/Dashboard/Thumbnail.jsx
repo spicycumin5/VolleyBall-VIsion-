@@ -11,7 +11,12 @@ function Thumbnail({ video={
     return (
         <div 
             className='cursor-pointer hover:bg-blue-800/20 rounded-xl transition-all duration-150 p-2'
-            onClick={() => navigate(`/video/${video.id}`)}
+            onClick={() => navigate(`/video/${video.id}`, { 
+                state: { 
+                videoSrc: video.src, 
+                videoName: video.title 
+                }
+        })}
         >
             <img src={video.src} className='rounded-xl'/>
             <div className='flex gap-2 items-center'>
