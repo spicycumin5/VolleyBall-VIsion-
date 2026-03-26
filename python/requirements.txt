@@ -13,3 +13,4 @@ scikit-learn
 fastreid
 faiss-cpu
 boxmot
+xformers
