@@ -30,7 +30,7 @@ function Dashboard(){
     date: "March 28, 10:15 AM",
 }]
     return (
-    <div className="flex flex-col h-screen min-w-screen bg-app-ice-blue overflow-hidden">
+    <div className="flex flex-col h-screen min-w-screen bg-white overflow-hidden">
         
         {/* Fixed Header */}
         <div className="flex-none z-10">
@@ -40,7 +40,7 @@ function Dashboard(){
         <div className="flex flex-row flex-1 overflow-hidden">
 
             {/* Fixed Left Bar */}
-            <div className="flex-none sm:hidden md:block md:w-1/5 rounded-tr-xl bg-app-dark-blue/70 overflow-y-auto">
+            <div className="flex-none sm:hidden md:block md:w-1/5 rounded-tr-xl bg-black/70 overflow-y-auto">
                 {playlists.map((title,index) => (
                     <Playlist key={index} title={title}/>
                 ))}

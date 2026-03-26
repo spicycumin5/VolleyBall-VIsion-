@@ -19,9 +19,9 @@ function Thumbnail({ video={
         })}
         >
             <img src={video.src} className='rounded-xl'/>
-            <div className='flex gap-2 items-center'>
-                <h1 className='text-xl font-semibold'> {video.title}</h1>
-                <h2> {video.date} </h2>
+            <div className='flex gap-2 items-center justify-between'>
+                <h1 className='text-base font-semibold'> {video.title}</h1>
+                <h2 className='text-sm font-base'> {video.date} </h2>
             </div>
         </div>
     );

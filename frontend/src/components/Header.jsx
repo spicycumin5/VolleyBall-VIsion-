@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 function Header({ value, onChange }){
     const navigate = useNavigate();
     return (
-        <header className="flex justify-between mb-2 bg-app-dark-blue p-4 sm:p-4 border-b-2 border-slate-900">
+        <header className="flex justify-between mb-2 bg-black p-4 sm:p-4 border-b-2 border-slate-900">
             <h2 
                 className="cursor-pointer text-orange-300 font-bold text-4xl tracking-tighter"
                 onClick={() => {navigate("/home")}}
