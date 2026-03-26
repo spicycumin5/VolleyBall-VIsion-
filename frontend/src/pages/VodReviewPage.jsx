@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useParams, useLocation, useNavigate } from "react-router-dom";
 import VideoPlayer from "../components/VodReviewPage/VideoPlayer";
 import Playlist from "../components/VodReviewPage/Playlist";
 import "./VodReviewPage.css";
@@ -14,7 +14,19 @@ import "./VodReviewPage.css";
  * Expected location.state shape:
  *   { videoSrc: string, videoName: string }
  */
- 
+
+//mock ai clip detection function
+async function detectClips(videoSrc) {
+  // Simulate network delay
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  return [
+    { id: 1, title: "Serve", start: 10, end: 45 },
+    { id: 2, title: "Spike", start: 120, end: 180 },
+    { id: 3, title: "Block", start: 300, end: 340 },
+  ];
+}
+
 export default function VodReviewPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -52,7 +64,7 @@ export default function VodReviewPage() {
     <div className="vod">
  
       <div className="vod__topbar">
-        <button className="vod__back" onClick={() => navigate("/")}>← Sessions</button>
+        <button className="vod__back" onClick={() => navigate("/home")}>← Sessions</button>
         <h1 className="vod__title">{videoName}</h1>
       </div>
  

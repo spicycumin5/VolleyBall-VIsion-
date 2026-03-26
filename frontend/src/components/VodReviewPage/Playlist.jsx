@@ -41,7 +41,7 @@ export default function Playlist({ clips, activeIndex, onSelect }) {
             >
               <span className="playlist__index">{i + 1}</span>
               <div className="playlist__meta">
-                <span className="playlist__name">{clip.label}</span>
+                <span className="playlist__name">{clip.title}</span>
                 <span className="playlist__time">
                   {formatTime(clip.start)} – {formatTime(clip.end)}
                 </span>
