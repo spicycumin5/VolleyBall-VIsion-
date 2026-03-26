@@ -10,7 +10,7 @@ function Thumbnail({ video={
     const navigate = useNavigate();
     return (
         <div 
-            className='cursor-pointer hover:bg-blue-800/20 rounded-xl transition-all duration-150 p-2'
+            className='cursor-pointer hover:bg-blue-800/20 hover:scale-101 rounded-xl transition-all duration-150 p-2'
             onClick={() => navigate(`/video/${video.id}`)}
         >
             <img src={video.src} className='rounded-xl'/>

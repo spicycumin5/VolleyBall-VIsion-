@@ -2,12 +2,17 @@
 // Created March 23, 4:10 PM
 // Evan Inrig
 
-import React from 'react';
+import React, { useState } from 'react';
 import Toolbar from '../components/Dashboard/Toolbar';
-import Header from '../components/VodReviewPage/Header';
+import Header from '../components/Header';
 import Thumbnail from '../components/Dashboard/Thumbnail';
+import Playlist from '../components/Dashboard/Playlist';
 
 function Dashboard(){
+
+    const [searchQuery, setSearch] = useState("");
+    
+    const playlists = ["All Videos", "Favorites", "Unreviewed", "Processing.."]
     const videos = [{
     id: 0,
     src: "https://www.fivb.com/wp-content/uploads/2025/07/102195-1.jpeg", 
@@ -29,20 +34,26 @@ function Dashboard(){
         
         {/* Fixed Header */}
         <div className="flex-none z-10">
-            <Header />
+            <Header value={searchQuery} onChange={(value) => {setSearch(value)}}/>
         </div>
 
         <div className="flex flex-row flex-1 overflow-hidden">
 
             {/* Fixed Left Bar */}
             <div className="flex-none sm:hidden md:block md:w-1/5 rounded-tr-xl bg-app-dark-blue/70 overflow-y-auto">
-                02
+                {playlists.map((title,index) => (
+                    <Playlist key={index} title={title}/>
+                ))}
             </div>
 
             {/* Scrollable Videos Grid */}
             <div className="flex-1 grid overflow-y-auto sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 gap-2 px-4 py-1 content-start">
-                {videos.map((video) => (
-                    <Thumbnail video={video} />
+                {videos
+                    .filter(video => (
+                        video.title.toLowerCase().includes(searchQuery.toLowerCase()) || video.date.toLowerCase().includes(searchQuery.toLowerCase())
+                    ))
+                    .map((video, index) => (
+                    <Thumbnail key={index} video={video} />
                 ))}
             </div>
         </div>

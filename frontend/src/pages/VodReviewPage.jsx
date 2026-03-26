@@ -1,6 +1,6 @@
 import React from 'react';
 import VideoPlayer from '../components/VodReviewPage/VideoPlayer';
-import Header from '../components/VodReviewPage/Header';
+import Header from '../components/Header';
 import VideoAnnotator from '../components/VodReviewPage/VideoAnnotator';
 
 function VodReviewPage( { videoRef }){
