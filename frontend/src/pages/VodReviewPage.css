@@ -1,0 +1,89 @@
+.vod {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #0a0a0a;
+  font-family: sans-serif;
+}
+ 
+.vod__topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+  background: #171717;
+  border-bottom: 1px solid #262626;
+}
+ 
+.vod__back {
+  font-size: 12px;
+  color: #a3a3a3;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+ 
+.vod__back:hover {
+  color: #ffffff;
+}
+ 
+.vod__title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #ffffff;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+ 
+.vod__body {
+  display: flex;
+  flex: 1;
+}
+ 
+.vod__player {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+ 
+.vod__sidebar {
+  width: 288px;
+  flex-shrink: 0;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+}
+ 
+.vod__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 13px;
+  color: #a3a3a3;
+}
+ 
+.vod-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  gap: 12px;
+  font-family: sans-serif;
+  font-size: 14px;
+  color: #737373;
+}
+ 
+.vod-error button {
+  font-size: 13px;
+  padding: 8px 16px;
+  border: 1px solid #d4d4d4;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}

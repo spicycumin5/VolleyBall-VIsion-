@@ -15,7 +15,7 @@ function getPlayerColor(tid) {
 
 // ── Main component ─────────────────────────────────────────
 
-function VideoAnnotator({ url, annotationUrl }) {
+function VideoAnnotator({ url, annotationUrl, activeClip }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const animFrameRef = useRef(null);
@@ -28,6 +28,13 @@ function VideoAnnotator({ url, annotationUrl }) {
   const [showLabels, setShowLabels] = useState(true);
   const [minConf, setMinConf] = useState(0.5);
   const [videoSize, setVideoSize] = useState({ w: 1920, h: 1080 });
+
+  useEffect(() => {
+    if (activeClip && videoRef.current) {
+      videoRef.current.currentTime = activeClip.start;
+      videoRef.current.play();
+    }
+  }, [activeClip]);
 
   // ── Load JSONL annotations ────────────────────────────────
   useEffect(() => {
@@ -281,7 +288,10 @@ function VideoAnnotator({ url, annotationUrl }) {
         <div className="text-sm text-gray-500 px-1">Loading annotations…</div>
       )}
     </div>
+    
+    
   );
+  
 }
 
 export default VideoAnnotator;
