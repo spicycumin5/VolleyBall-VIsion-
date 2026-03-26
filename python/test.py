@@ -38,9 +38,9 @@ from ultralytics import YOLO
 from PIL import Image
 from boxmot import BotSort
 
-from reiddatabase import ReIDDatabase, TrackMemory
-from tracknet import PyTorchTrackNetTracker, draw_heatmap_overlay
 from ball_tracker import KalmanBallTracker
+
+from dino_tracker import dino_track_players
 
 parser = argparse.ArgumentParser()
 
@@ -77,47 +77,6 @@ def is_on_player(bx, by, player_boxes):
             return True
 
     return False
-
-
-def load_dinov2_model():
-    # Load the small DINOv2 model (fast and accurate)
-    # Output dimension: 768
-    model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vitb14')
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model.to(device)
-    model.eval() # Set to evaluation mode
-
-    return model
-
-
-def get_dinov2_embedding(model, crop_bgr):
-    # 1. Convert OpenCV BGR to RGB, then to PIL Image
-    crop_rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
-    pil_image = Image.fromarray(crop_rgb)
-
-    # 2. DINOv2 Standard Preprocessing
-    transform = T.Compose([
-        T.Resize((224, 224)), # Force square for the ViT
-        T.ToTensor(),
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-
-    tensor = transform(pil_image).unsqueeze(0)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    tensor = tensor.to(device)
-
-    # 3. Extract Features
-    with torch.no_grad():
-        features = model(tensor)
-
-    # 4. Normalize and return as numpy array
-    emb = features.cpu().numpy()[0]
-    norm = np.linalg.norm(emb)
-    if norm > 0:
-        emb /= norm
-
-    return emb.astype("float32")
 
 
 def write_json_frame(file_obj, frame_idx, ball_pos, players, ball_conf):
@@ -173,7 +132,7 @@ def track_players(frame, player_dets, tracker, annotated_frame):
 
     if len(player_dets) > 0:
         # BoxMOT expects array of [x1, y1, x2, y2, conf, cls]
-        tracks = tracker.update(player_dets, frame) 
+        tracks = tracker.update(player_dets, frame)
     else:
         tracks = np.empty((0, 8))
 
@@ -191,17 +150,8 @@ def track_players(frame, player_dets, tracker, annotated_frame):
             if not is_motion_consistent(track_id, center):
                 continue
 
-            if is_far_player((x1, x2, y1, y2)):
-                color = (0, 165, 255)
-                label = f"P-{track_id} (far)"
-
-                if len(track_history[track_id]) > 0:
-                    prev_center = track_history[track_id][-1]
-                    if motion_distance(prev_center, center) > 80:
-                        continue
-            else:
-                color = (0, 255, 0)
-                label = f"P-{track_id}"
+            color = (0, 255, 0)
+            label = f"P-{track_id}"
 
             # Log history and draw
             track_history[track_id].append(center)
@@ -329,7 +279,7 @@ def main():
         ball_dets = dets[dets[:, 5] == 1] if len(dets) > 0 else np.empty((0, 6))
 
         # 3. Track Players via BoxMOT
-        current_player_boxes, frame_players_data = track_players(
+        current_player_boxes, frame_players_data = dino_track_players(
             frame, player_dets, tracker, annotated_frame
         )
 
