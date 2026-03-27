@@ -105,7 +105,7 @@ class VolleyballDB:
         rally_number: int,
         start_frame: int,
         end_frame: int,
-        fps: float = 30.0,
+        fps: float = 60.0,
         clip_path: Optional[str] = None,
         metadata: Optional[dict] = None,
     ) -> uuid.UUID:
@@ -135,7 +135,7 @@ class VolleyballDB:
         rally_id: uuid.UUID,
         start_frame: int,
         end_frame: int,
-        fps: float = 30.0,
+        fps: float = 60.0,
     ) -> list[uuid.UUID]:
         """Bulk-insert every frame in the rally. Returns list of frame UUIDs."""
         rows = [
