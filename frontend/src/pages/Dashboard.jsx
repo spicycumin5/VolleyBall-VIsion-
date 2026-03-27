@@ -43,7 +43,7 @@ function Dashboard(){
                         video.title.toLowerCase().includes(searchQuery.toLowerCase()) || video.date.toLowerCase().includes(searchQuery.toLowerCase())
                     ))
                     .map((video, index) => (
-                    <Thumbnail key={index} video={video} />
+                    <Thumbnail key={index} id={index} video={video} />
                 ))}
             </div>
         </div>
