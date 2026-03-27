@@ -2,7 +2,10 @@ numpy
 opencv-python
 rich
 torch
+torchvision
 ultralytics
+Pillow
+scipy
 yacs
 termcolor
 tabulate
@@ -13,4 +16,3 @@ scikit-learn
 fastreid
 faiss-cpu
 boxmot
-xformers

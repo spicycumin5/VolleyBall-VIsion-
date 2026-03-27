@@ -33,6 +33,7 @@ import argparse
 import numpy as np
 import os
 import cv2
+import warnings
 from rich.progress import track as track
 from ultralytics import YOLO
 from PIL import Image
@@ -40,7 +41,7 @@ from boxmot import BotSort, StrongSort
 from scipy.optimize import linear_sum_assignment
 
 from ball_tracker import MultiBallTracker 
-from dino_tracker import dino_track_players
+from player_action_db import PlayerActionDatabase
 from utils import get_center, is_motion_consistent, track_history, is_on_player
 
 # --- Appearance memory ---
@@ -116,8 +117,11 @@ parser.add_argument('--heatmap_conf', type=int, default=0.5,
 parser.add_argument('--heatmap_alpha', type=float, default=0.0,
                     help='Alpha for heatmap overlay')
 parser.add_argument('--json_output', default=None, help="Path to output json")
+parser.add_argument('--action_json_output', default=None,
+                    help='Path to output player action table json')
+parser.add_argument('--db_output', default=None, help="Path to output sqlite database")
 parser.add_argument('--dino', action='store_true', default=False,
-                    help='Use Dino for tracking, else BoxMOT. Much slower. Warning: Dino sucks')
+                    help='Deprecated and ignored. Player tracking always uses BoxMOT')
 parser.add_argument('--device', default=0,
                     help='Device to use')
 
@@ -134,6 +138,51 @@ def write_json_frame(file_obj, frame_idx, ball, players):
     }
 
     file_obj.write(json.dumps(frame_data) + '\n')
+
+
+def resolve_action_json_output(json_output_path, action_json_output_path):
+    if action_json_output_path:
+        return action_json_output_path
+
+    if not json_output_path:
+        return None
+
+    json_path = Path(json_output_path)
+    return str(json_path.with_name(f"{json_path.stem}_actions.json"))
+
+
+def collect_action_rows(action_rows, frame_idx, players):
+    if action_rows is None:
+        return
+
+    for player in players:
+        action = str(player.get("state", "player"))
+        if action == "player":
+            continue
+
+        action_rows.append({
+            "player_id": int(player["tid"]),
+            "action": action,
+            "frame": int(frame_idx),
+            "action_conf": None if player.get("state_conf") is None else float(player["state_conf"]),
+        })
+
+
+def write_action_table(file_path, action_rows):
+    if file_path is None:
+        return
+
+    parent = os.path.split(file_path)[0]
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+    with open(file_path, 'w') as file_obj:
+        json.dump(action_rows, file_obj)
+
+
+def warn_if_dino_requested(enabled):
+    if enabled:
+        warnings.warn("`--dino` is deprecated and ignored; using BoxMOT tracking instead.", stacklevel=2)
 
 
 def get_embeddings(tracker):
@@ -748,6 +797,7 @@ def load_models():
 
 def main():
     """Do the thing."""
+    warn_if_dino_requested(args.dino)
     device = 0 if torch.cuda.is_available() else "cpu"
     player_conf = resolve_conf(args.player_conf, args.conf)
     action_conf = resolve_conf(args.action_conf, args.conf)
@@ -801,6 +851,18 @@ def main():
         os.makedirs(os.path.split(args.json_output)[0], exist_ok=True)
         json_file = open(args.json_output, 'w')
 
+    action_json_output = resolve_action_json_output(args.json_output, args.action_json_output)
+    action_rows = [] if action_json_output else None
+
+    player_action_db = None
+    if args.db_output:
+        player_action_db = PlayerActionDatabase(
+            db_path=args.db_output,
+            video_path=args.input,
+            fps=fps,
+            total_frames=total_frames,
+        )
+
     for frame_idx in track(range(total_frames)):
         ret, frame = cap.read()
         if not ret:
@@ -850,9 +912,7 @@ def main():
             ball_dets = filter_detections_by_conf(ball_dets, ball_conf)
 
         # 3. Track Players via BoxMOT
-        current_player_boxes, frame_players_data = dino_track_players(
-            frame, player_dets, tracker, annotated_frame
-        ) if args.dino else track_players(
+        current_player_boxes, frame_players_data = track_players(
             frame, player_dets, action_dets, tracker, annotated_frame, frame_idx
         )
 
@@ -862,11 +922,17 @@ def main():
         # 5. Output
         out.write(annotated_frame)
         write_json_frame(json_file, frame_idx, final_ball, frame_players_data)
+        collect_action_rows(action_rows, frame_idx, frame_players_data)
+        if player_action_db is not None:
+            player_action_db.add_frame_players(frame_idx, frame_players_data)
 
     cap.release()
     out.release()
     if json_file:
         json_file.close()
+    write_action_table(action_json_output, action_rows)
+    if player_action_db is not None:
+        player_action_db.close()
 
 
 if __name__ == "__main__":
