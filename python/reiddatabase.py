@@ -1,138 +1,196 @@
 #!/usr/bin/env python3
+
+import os
+import json
 import numpy as np
 import faiss
-from collections import defaultdict, deque
-import os
-import pickle
+from typing import Dict, List, Optional
+
 
 class ReIDDatabase:
-    def __init__(self, dim=768, alpha=0.05, save_path="player_db"):
+    def __init__(
+        self,
+        dim: int = 512,
+        similarity_threshold: float = 0.75,
+        db_path: str = "reid_db"
+    ):
+        """
+        FAISS-backed ReID database.
+
+        Args:
+            dim: embedding dimension (512 for OSNet)
+            similarity_threshold: cosine similarity threshold for matching
+            db_path: folder to persist DB
+        """
         self.dim = dim
-        self.alpha = alpha
-        self.save_path = save_path
-        self.index = faiss.IndexIDMap(faiss.IndexFlatIP(dim))
-        self.prototypes = {}
+        self.threshold = similarity_threshold
+        self.db_path = db_path
+
+        os.makedirs(db_path, exist_ok=True)
+
+        # FAISS index (cosine similarity via inner product)
+        self.index = faiss.IndexFlatIP(dim)
+
+        # Metadata
+        self.id_map: List[int] = []  # maps FAISS idx -> global_id
+        self.embeddings: Dict[int, List[np.ndarray]] = {}  # raw embeddings
+        self.mean_embeddings: Dict[int, np.ndarray] = {}   # averaged embeddings
+
         self.next_id = 0
 
+    # ---------------------------
+    # Utilities
+    # ---------------------------
 
-    def add(self, emb):
-        emb = self._normalize(emb)
+    def _normalize(self, emb: np.ndarray) -> np.ndarray:
+        return emb / np.linalg.norm(emb)
 
-        player_id = self.next_id
-        self.next_id += 1
+    def _update_index(self):
+        """Rebuild FAISS index from mean embeddings."""
+        self.index.reset()
+        self.id_map = []
 
-        self.prototypes[player_id] = emb
-
-        # FAISS requires IDs to be 64-bit ints
-        self.index.add_with_ids(emb.reshape(1, -1), np.array([player_id], dtype=np.int64))
-
-        return player_id
-
-    def match(self, emb, threshold=0.7):
-        if self.index.ntotal == 0:
-            return None
-
-        emb = self._normalize(emb)
-
-        # Search for the top 1 closest prototype
-        D, I = self.index.search(emb.reshape(1, -1), k=1)
-
-        similarity = D[0][0]
-        matched_id = I[0][0]
-
-        if similarity > threshold:
-            return matched_id
-        return None
-
-    def match_with_score(self, emb, threshold=0.45):
-        if self.index.ntotal == 0:
-            return None
-        emb = self._normalize(emb)
-        D, I = self.index.search(emb.reshape(1, -1), k=1)
-
-        similarity = D[0][0]
-        matched_id = int(I[0][0])
-
-        if similarity > threshold:
-            return matched_id, similarity
-        return None
-
-    def update(self, player_id, emb):
-        """
-        Updates the player's prototype using Exponential Moving Average (EMA).
-        This prevents 'drift' where a single blurry frame ruins the database ID.
-        """
-        if player_id not in self.prototypes:
+        if not self.mean_embeddings:
             return
 
-        emb = self._normalize(emb)
+        vectors = []
+        for gid, emb in self.mean_embeddings.items():
+            vectors.append(emb.astype(np.float32))
+            self.id_map.append(gid)
 
-        # 1. Calculate the new EMA prototype
-        old_proto = self.prototypes[player_id]
-        new_proto = (1.0 - self.alpha) * old_proto + self.alpha * emb
-        new_proto = self._normalize(new_proto)
+        vectors = np.vstack(vectors)
+        self.index.add(vectors)
 
-        # 2. Update dictionary storage
-        self.prototypes[player_id] = new_proto
+    # ---------------------------
+    # Core API
+    # ---------------------------
 
-        # 3. Update FAISS (Remove old vector, add new vector with same ID)
-        self.index.remove_ids(np.array([player_id], dtype=np.int64))
-        self.index.add_with_ids(new_proto.reshape(1, -1), np.array([player_id], dtype=np.int64))
+    def add_identity(self, embedding: np.ndarray) -> int:
+        """Create a new identity."""
+        embedding = self._normalize(embedding)
 
-    def _normalize(self, emb):
-        """Force L2 normalization. FAISS Inner Product only acts as Cosine Similarity if vectors are normalized."""
-        norm = np.linalg.norm(emb)
-        if norm > 0:
-            return (emb / norm).astype("float32")
-        return emb.astype("float32")
+        gid = self.next_id
+        self.next_id += 1
 
-    def save(self):
-        """Saves the current player database to disk."""
-        if not os.path.exists(self.save_path):
-            os.makedirs(self.save_path)
+        self.embeddings[gid] = [embedding]
+        self.mean_embeddings[gid] = embedding
 
-        # Save FAISS index
-        faiss.write_index(self.index, os.path.join(self.save_path, "index.faiss"))
+        self._update_index()
+        return gid
 
-        # Save prototypes and metadata
-        with open(os.path.join(self.save_path, "meta.pkl"), 'wb') as f:
-            pickle.dump({
-                'prototypes': self.prototypes,
-                'next_id': self.next_id
-            }, f)
-        print(f"Database saved with {self.next_id} players.")
+    def update_identity(self, gid: int, embedding: np.ndarray):
+        """Update an existing identity with new embedding."""
+        embedding = self._normalize(embedding)
 
-    def load(self):
-        """Loads a previously saved database."""
-        index_file = os.path.join(self.save_path, "index.faiss")
-        meta_file = os.path.join(self.save_path, "meta.pkl")
+        self.embeddings[gid].append(embedding)
 
-        if os.path.exists(index_file) and os.path.exists(meta_file):
-            self.index = faiss.read_index(index_file)
-            with open(meta_file, 'rb') as f:
-                data = pickle.dump(f) # Note: use pickle.load(f)
-                self.prototypes = data['prototypes']
-                self.next_id = data['next_id']
-            print("Database loaded.")
+        # Update mean embedding
+        self.mean_embeddings[gid] = np.mean(
+            self.embeddings[gid], axis=0
+        )
+        self.mean_embeddings[gid] = self._normalize(self.mean_embeddings[gid])
 
+        self._update_index()
 
-class TrackMemory:
-    def __init__(self, history=10):
-        self.buffer = defaultdict(lambda: deque(maxlen=history))
+    def query(self, embedding: np.ndarray) -> Optional[int]:
+        """
+        Query the database.
 
-    def add(self, track_id, emb):
-        self.buffer[track_id].append(emb)
-
-    def get(self, track_id, min_frames=5):
-        # we still want to try and ID them.
-        if len(self.buffer[track_id]) < min_frames:
+        Returns:
+            matched global_id or None
+        """
+        if self.index.ntotal == 0:
             return None
 
-        # Average the embeddings in the buffer to create a robust initial shot
-        avg = np.mean(self.buffer[track_id], axis=0)
+        embedding = self._normalize(embedding).astype(np.float32)
+        embedding = np.expand_dims(embedding, axis=0)
 
-        norm = np.linalg.norm(avg)
-        if norm > 0:
-            avg /= norm
+        sims, indices = self.index.search(embedding, k=1)
 
-        return avg.astype("float32")
+        sim = sims[0][0]
+        idx = indices[0][0]
+
+        if sim >= self.threshold:
+            return self.id_map[idx]
+
+        return None
+
+    def get_or_create(self, embedding: np.ndarray) -> int:
+        """
+        Main entry point:
+        - match existing identity OR
+        - create new one
+        """
+        gid = self.query(embedding)
+
+        if gid is not None:
+            self.update_identity(gid, embedding)
+            return gid
+
+        return self.add_identity(embedding)
+
+    # ---------------------------
+    # Track-level aggregation
+    # ---------------------------
+
+    def aggregate_track(self, embeddings: List[np.ndarray]) -> np.ndarray:
+        """Aggregate multiple embeddings into one."""
+        if len(embeddings) == 0:
+            raise ValueError("Empty embedding list")
+
+        emb = np.mean(embeddings, axis=0)
+        return self._normalize(emb)
+
+    # ---------------------------
+    # Persistence
+    # ---------------------------
+
+    def save(self):
+        """Save database to disk."""
+        data = {
+            "next_id": self.next_id,
+            "embeddings": {
+                str(k): [e.tolist() for e in v]
+                for k, v in self.embeddings.items()
+            }
+        }
+
+        with open(os.path.join(self.db_path, "db.json"), "w") as f:
+            json.dump(data, f)
+
+    def load(self):
+        """Load database from disk."""
+        path = os.path.join(self.db_path, "db.json")
+        if not os.path.exists(path):
+            return
+
+        with open(path, "r") as f:
+            data = json.load(f)
+
+        self.next_id = data["next_id"]
+
+        self.embeddings = {
+            int(k): [np.array(e) for e in v]
+            for k, v in data["embeddings"].items()
+        }
+
+        # rebuild means
+        self.mean_embeddings = {
+            gid: self._normalize(np.mean(v, axis=0))
+            for gid, v in self.embeddings.items()
+        }
+
+        self._update_index()
+
+    # ---------------------------
+    # Debugging
+    # ---------------------------
+
+    def __len__(self):
+        return len(self.mean_embeddings)
+
+    def stats(self):
+        return {
+            "num_identities": len(self),
+            "total_embeddings": sum(len(v) for v in self.embeddings.values())
+        }

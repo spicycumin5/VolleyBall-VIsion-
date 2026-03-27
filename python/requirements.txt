@@ -2,7 +2,10 @@ numpy
 opencv-python
 rich
 torch
-ultralytics
+torchvision
+ultralytics>=8.3.237
+Pillow
+scipy
 yacs
 termcolor
 tabulate
