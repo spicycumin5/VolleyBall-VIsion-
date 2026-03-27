@@ -3,6 +3,7 @@
 // Evan Inrig
 
 import React, { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Toolbar from '../components/Dashboard/Toolbar';
 import Header from '../components/Header';
 import Thumbnail from '../components/Dashboard/Thumbnail';
@@ -11,9 +12,11 @@ import UploadButton from '../components/Dashboard/UploadButton';
 import sample_videos from '../assets/tests/sample_videos';
 import sample_playlists from '../assets/tests/sample_playlists';
 import UploadBar from '../components/Dashboard/UploadBar';
+import SESSIONS from '../assets/videos/sessions.js';
 
 function Dashboard(){
     const inputRef = useRef(null);
+    const navigate = useNavigate(); 
     const [searchQuery, setSearch] = useState("");
     const [fileSubmit, setSubmit] = useState(false);
     
@@ -38,13 +41,17 @@ function Dashboard(){
 
             {/* Scrollable Videos Grid */}
             <div className="flex-1 grid overflow-y-auto sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 p-2 content-start">
-                {videos
-                    .filter(video => (
-                        video.title.toLowerCase().includes(searchQuery.toLowerCase()) || video.date.toLowerCase().includes(searchQuery.toLowerCase())
+                {SESSIONS
+                    .filter(session => (
+                        session.title.toLowerCase().includes(searchQuery.toLowerCase()) || session.date.toLowerCase().includes(searchQuery.toLowerCase())
                     ))
-                    .map((video, index) => (
-                    <Thumbnail key={index} id={index} video={video} />
-                ))}
+                    .map((session, index) => (
+                    <Thumbnail
+                        key={index}
+                        id={index}
+                        video={{ src: session.thumbnail, title: session.title, date: session.date }}
+                        onClick={() => navigate("/vod", { state: { sessionKey: session.key } })}  
+                    /> ))}
             </div>
         </div>
     </div>
