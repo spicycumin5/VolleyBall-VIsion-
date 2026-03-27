@@ -244,7 +244,7 @@ function VideoAnnotator({ url, annotationUrl, activeClip }) {
   }, [draw]);
 
   return (
-    <div className="flex flex-col gap-3 w-full max-w-5xl">
+    <div className="flex flex-col gap-3 w-full max-w-6xl">
       {/* ── Video + Canvas overlay ── */}
       <div className="relative inline-block bg-black rounded-lg overflow-hidden shadow-xl">
         <video
