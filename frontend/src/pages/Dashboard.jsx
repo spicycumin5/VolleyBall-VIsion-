@@ -49,7 +49,7 @@ function Dashboard(){
         </div>
     </div>
     <UploadButton handleFile={(file) => {}}/>
-    <UploadBar />
+    {/* <UploadBar /> */}
     {fileSubmit && (
             <div>
                 <input type="file">

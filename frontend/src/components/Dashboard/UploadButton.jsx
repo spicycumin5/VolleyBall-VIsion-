@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import UploadBar from './UploadBar';
 
 function UploadButton({ handleFile }) {
     const inputRef = useRef(null);
@@ -20,6 +21,8 @@ function UploadButton({ handleFile }) {
                 return prev + 2;
             });
         }, 50);
+
+        e.target.value = null; // reset input so the same file can be uploaded again
     };
 
     return (
@@ -31,17 +34,7 @@ function UploadButton({ handleFile }) {
                 onChange={handleFileChange}
             />
 
-            {progress !== null && (
-                <div className='fixed z-50 w-full bg-slate-800 rounded-xl p-3 shadow-lg'>
-                    <p className='text-sm text-orange-200 mb-2'>Uploading... {progress}%</p>
-                    <div className='w-full bg-slate-600 rounded-full h-2'>
-                        <div
-                            className='bg-orange-300 h-2 rounded-full transition-all duration-150'
-                            style={{ width: `${progress}%` }}
-                        />
-                    </div>
-                </div>
-            )}
+            <UploadBar progress={progress}/>
 
             <button
                 onClick={() => inputRef.current.click()}
