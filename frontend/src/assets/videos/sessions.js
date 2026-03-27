@@ -12,11 +12,11 @@ const SESSIONS = [
     ],
   },
   {
-    key: "placeholder1",
+    key: "one_play_superres",
     title: "Practice — March 22",
     thumbnail: "/thumbnails/thumbnail1.png",
-    videoSrc: "/videos/practice_march.mp4",
-    annotationUrl: "  ",
+    videoSrc: "/videos/one_play.mp4",
+    annotationUrl: "/annotations/one_play_superresolution.json",
     clips: [
       { id: 1, title: "Opening Serve", start: 5,  end: 30  },
       { id: 2, title: "Nice Dig",      start: 90, end: 120 },
