@@ -5,6 +5,7 @@ const SESSIONS = [
     thumbnail: "/thumbnails/one_play.jpg",
     videoSrc: "/videos/one_play.mp4",
     annotationUrl: "/annotations/one_play.json",
+    actionURL: "/annotations/one_play_filtered_actions.json", 
     clips: [
       { id: 1, title: "Serve",  start: 2, end: 5  },
       { id: 2, title: "Set",  start: 6, end: 7 },
@@ -17,6 +18,7 @@ const SESSIONS = [
     thumbnail: "/thumbnails/thumbnail1.png",
     videoSrc: "/videos/one_play.mp4",
     annotationUrl: "/annotations/one_play_superresolution.json",
+    actionURL: "/annotations/one_play_superresolution_actions.json", 
     clips: [
       { id: 1, title: "Opening Serve", start: 5,  end: 30  },
       { id: 2, title: "Nice Dig",      start: 90, end: 120 },
@@ -28,6 +30,7 @@ const SESSIONS = [
     thumbnail: "/thumbnails/thumbnail2.png",
     videoSrc: "/videos/one_play.mp4",
     annotationUrl: "/annotations/one_play_filtered.json",
+    actionURL: "/annotations/one_play_superresolution_actions.json", 
     clips: [
       { id: 1, title: "Opening Serve", start: 5,  end: 30  },
       { id: 2, title: "Nice Dig",      start: 90, end: 120 },
@@ -39,6 +42,7 @@ const SESSIONS = [
     thumbnail: "/thumbnails/thumbnail3.png",
     videoSrc: "/videos/second_play.mp4",
     annotationUrl: "/annotations/second_play_superresolution.json",
+    actionURL: "/annotations/second_play_superresolution_actions.json", 
     clips: [
       { id: 1, title: "Opening Serve", start: 5,  end: 30  },
       { id: 2, title: "Nice Dig",      start: 90, end: 120 },
@@ -50,6 +54,7 @@ const SESSIONS = [
     thumbnail: "/thumbnails/thumbnail4.png",
     videoSrc: "/videos/second_play.mp4",
     annotationUrl: "/annotations/second_play_filtered.json",
+    actionURL: "/annotations/second_play_filtered_actions.json", 
     clips: [
       { id: 1, title: "Opening Serve", start: 5,  end: 30  },
       { id: 2, title: "Nice Dig",      start: 90, end: 120 },
