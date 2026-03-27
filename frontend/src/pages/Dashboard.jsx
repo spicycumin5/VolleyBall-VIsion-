@@ -13,15 +13,40 @@ import sample_videos from '../assets/tests/sample_videos';
 import sample_playlists from '../assets/tests/sample_playlists';
 import UploadBar from '../components/Dashboard/UploadBar';
 import SESSIONS from '../assets/videos/sessions.js';
+import RenameModule from '../components/Dashboard/RenameModule';
 
 function Dashboard(){
     const inputRef = useRef(null);
     const navigate = useNavigate(); 
     const [searchQuery, setSearch] = useState("");
     const [fileSubmit, setSubmit] = useState(false);
-    
+    const [sessions, setSessions] = useState(SESSIONS);
     const playlists = sample_playlists;
     const videos = sample_videos;
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [tempFileName, setTempFileName] = useState("");
+
+    const handleFileUploadComplete = (file) => {
+        // Triggered after UploadButton finishes its "fake" progress
+        setTempFileName(file.name.split('.')[0]); // Default to filename
+        setIsModalOpen(true);
+    };
+
+    const saveNewSession = (newTitle) => {
+        const newSession = {
+            key: `new-${Date.now()}`, // Unique key
+            title: newTitle,
+            date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' }),
+            thumbnail: "/thumbnails/one_play.jpg", // Placeholder
+            videoSrc: "/videos/one_play.mp4",      // Placeholder
+            annotationUrl: "/annotations/one_play.json",
+            clips: []
+        };
+
+        setSessions([newSession, ...sessions]); // Add to the front of the list
+        setIsModalOpen(false);
+    };
+
     return (
     <div>
     <div className="flex flex-col h-screen min-w-screen bg-white overflow-hidden">
@@ -41,13 +66,13 @@ function Dashboard(){
 
             {/* Scrollable Videos Grid */}
             <div className="flex-1 grid overflow-y-auto sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 p-2 content-start">
-                {SESSIONS
+                {sessions
                     .filter(session => (
                         session.title.toLowerCase().includes(searchQuery.toLowerCase()) || session.date.toLowerCase().includes(searchQuery.toLowerCase())
                     ))
                     .map((session, index) => (
                     <Thumbnail
-                        key={index}
+                        key={session.key}
                         id={index}
                         video={{ src: session.thumbnail, title: session.title, date: session.date }}
                         onClick={() => navigate("/vod", { state: { sessionKey: session.key } })}  
@@ -55,7 +80,13 @@ function Dashboard(){
             </div>
         </div>
     </div>
-    <UploadButton handleFile={(file) => {}}/>
+    <UploadButton onUploadComplete={handleFileUploadComplete}/>
+        <RenameModule 
+                isOpen={isModalOpen}
+                initialName={tempFileName}
+                onSave={saveNewSession}
+                onCancel={() => setIsModalOpen(false)}
+            />
     {/* <UploadBar /> */}
     {fileSubmit && (
             <div>

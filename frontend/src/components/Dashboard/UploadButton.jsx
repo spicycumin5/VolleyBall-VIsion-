@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import UploadBar from './UploadBar';
 
-function UploadButton({ handleFile }) {
+function UploadButton({ onUploadComplete }) {
     const inputRef = useRef(null);
     const [progress, setProgress] = useState(null);
 
@@ -15,6 +15,7 @@ function UploadButton({ handleFile }) {
                 if (prev >= 100) {
                     clearInterval(interval);
                     setTimeout(() => setProgress(null), 1000);
+                    onUploadComplete(file); 
                     return 100;
                 }
                 return prev + 2;
