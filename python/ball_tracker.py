@@ -137,6 +137,14 @@ class MultiBallTracker:
         track['velocity'] = [float(velocity[0]), float(velocity[1])]
         track['has_velocity'] = True
 
+    def _primary_track_score(self, track):
+        return (
+            not track['is_predicted'],
+            -int(track['missed']),
+            float(track['conf']),
+            float(track['total_dist']),
+        )
+
     def update(self, ball_dets):
         self.frame_index += 1
 
@@ -261,17 +269,9 @@ class MultiBallTracker:
         for tid in dead_tracks:
             del self.tracks[tid]
 
-        # 8. Identify Primary Ball (Most Distance Moved)
+        # 8. Identify Primary Ball
         primary_id = None
-        max_dist = -1
-        
-        # Tie-breaker for the very first frame: use highest confidence
-        if len(self.tracks) > 0 and all(t['total_dist'] == 0 for t in self.tracks.values()):
-            primary_id = max(self.tracks.keys(), key=lambda k: self.tracks[k]['conf'])
-        else:
-            for tid, data in self.tracks.items():
-                if data['total_dist'] > max_dist:
-                    max_dist = data['total_dist']
-                    primary_id = tid
+        if len(self.tracks) > 0:
+            primary_id = max(self.tracks.keys(), key=lambda k: self._primary_track_score(self.tracks[k]))
 
         return primary_id, self.tracks

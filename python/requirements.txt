@@ -3,7 +3,7 @@ opencv-python
 rich
 torch
 torchvision
-ultralytics
+ultralytics>=8.3.237
 Pillow
 scipy
 yacs
