@@ -37,7 +37,7 @@ function Dashboard(){
             </div>
 
             {/* Scrollable Videos Grid */}
-            <div className="flex-1 grid overflow-y-auto sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 gap-2 px-4 py-2 content-start">
+            <div className="flex-1 grid overflow-y-auto sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 p-2 content-start">
                 {videos
                     .filter(video => (
                         video.title.toLowerCase().includes(searchQuery.toLowerCase()) || video.date.toLowerCase().includes(searchQuery.toLowerCase())

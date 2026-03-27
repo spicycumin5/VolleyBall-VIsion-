@@ -3,7 +3,6 @@ import UploadBar from './UploadBar';
 
 function UploadButton({ handleFile }) {
     const inputRef = useRef(null);
-
     const [progress, setProgress] = useState(null);
 
     const handleFileChange = (e) => {
@@ -35,13 +34,15 @@ function UploadButton({ handleFile }) {
             />
 
             <UploadBar progress={progress}/>
-
+            
+            {!progress && (
             <button
                 onClick={() => inputRef.current.click()}
-                className='fixed cursor-pointer bottom-12 right-12 z-50 w-12 h-12 bg-white rounded-full hover:scale-110 transition-transform duration-150'
+                className='uploadButton fixed cursor-pointer bottom-12 right-12 z-50 w-12 h-12 bg-white rounded-full hover:scale-110 transition-transform duration-150'
             >
                 <span className="text-4xl font-normal">+</span>
             </button>
+            )}
         </>
     );
 }
