@@ -32,6 +32,13 @@ function Dashboard(){
         setIsModalOpen(true);
     };
 
+    const deleteSession = (key) => {
+    if (window.confirm("Are you sure you want to delete this session?")) {
+        const updatedSessions = sessions.filter(s => s.key !== key);
+        setSessions(updatedSessions);
+    }
+    };
+
     const saveNewSession = (newTitle) => {
         const newSession = {
             key: `new-${Date.now()}`, // Unique key
@@ -75,8 +82,10 @@ function Dashboard(){
                         key={session.key}
                         id={index}
                         video={{ src: session.thumbnail, title: session.title, date: session.date }}
-                        onClick={() => navigate("/vod", { state: { sessionKey: session.key } })}  
-                    /> ))}
+                        onClick={() => navigate("/vod", { state: { sessionKey: session.key } })}
+                        onDelete={() => deleteSession(session.key)} // Pass the function here
+                    /> 
+                ))}
             </div>
         </div>
     </div>
