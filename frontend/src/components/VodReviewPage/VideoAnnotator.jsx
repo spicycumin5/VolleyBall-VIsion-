@@ -13,6 +13,24 @@ function getPlayerColor(tid) {
   return PLAYER_COLORS[tid % PLAYER_COLORS.length];
 }
 
+// ── Extract ball position from either annotation format ─────
+// Old format: { x: 885, y: 348, conf: 0.52 }
+// New format: { tid: 1, box: [x1,y1,x2,y2], center: [x,y], conf: 0.52, predicted: false }
+function getBallPos(ball) {
+  if (!ball || ball.conf <= 0) return null;
+  let x, y;
+  if (ball.center) {
+    [x, y] = ball.center;
+  } else if (ball.x !== undefined) {
+    x = ball.x;
+    y = ball.y;
+  } else {
+    return null;
+  }
+  if (x < 0 || y < 0) return null;
+  return { x, y, conf: ball.conf, predicted: ball.predicted ?? false };
+}
+
 // ── Main component ─────────────────────────────────────────
 
 function VideoAnnotator({ url, annotationUrl, activeClip }) {
@@ -151,8 +169,9 @@ function VideoAnnotator({ url, annotationUrl, activeClip }) {
       const trailPts = [];
       for (let i = startIdx; i <= frameIdx; i++) {
         const f = annotationsRef.current[i];
-        if (f?.ball && f.ball.conf > 0 && f.ball.x >= 0 && f.ball.y >= 0) {
-          trailPts.push({ x: f.ball.x * sx + offsetX, y: f.ball.y * sy + offsetY, age: frameIdx - i });
+        const bp = getBallPos(f?.ball);
+        if (bp) {
+          trailPts.push({ x: bp.x * sx + offsetX, y: bp.y * sy + offsetY, age: frameIdx - i });
         }
       }
       if (trailPts.length > 1) {
@@ -191,7 +210,8 @@ function VideoAnnotator({ url, annotationUrl, activeClip }) {
 
         // Label
         if (showLabels) {
-          const label = `#${p.tid}`;
+          const stateTag = p.state && p.state !== "player" ? ` ${p.state}` : "";
+          const label = `#${p.tid}${stateTag}`;
           const fontSize = Math.max(10, Math.min(14, bw * 0.35));
           ctx.font = `600 ${fontSize}px ui-monospace, monospace`;
           const metrics = ctx.measureText(label);
@@ -209,28 +229,34 @@ function VideoAnnotator({ url, annotationUrl, activeClip }) {
     }
 
     // ── Ball marker ──────────────────────────────────────────
-    if (showBall && data.ball && data.ball.conf > 0 && data.ball.x >= 0 && data.ball.y >= 0) {
-      const bx = data.ball.x * sx + offsetX;
-      const by = data.ball.y * sy + offsetY;
+    const ballPos = getBallPos(data.ball);
+    if (showBall && ballPos) {
+      const bx = ballPos.x * sx + offsetX;
+      const by = ballPos.y * sy + offsetY;
       const radius = 8;
+      const ballColor = ballPos.predicted ? "rgba(255, 220, 40, 0.45)" : "#FFDC28";
 
       // Outer glow
       const grad = ctx.createRadialGradient(bx, by, 0, bx, by, radius * 2.5);
-      grad.addColorStop(0, "rgba(255, 220, 40, 0.6)");
+      grad.addColorStop(0, ballPos.predicted ? "rgba(255, 220, 40, 0.3)" : "rgba(255, 220, 40, 0.6)");
       grad.addColorStop(1, "rgba(255, 220, 40, 0)");
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(bx, by, radius * 2.5, 0, Math.PI * 2);
       ctx.fill();
 
-      // Inner circle
-      ctx.fillStyle = "#FFDC28";
+      // Inner circle (dashed outline if predicted)
+      ctx.fillStyle = ballColor;
       ctx.strokeStyle = "#000";
       ctx.lineWidth = 1.5;
+      if (ballPos.predicted) {
+        ctx.setLineDash([3, 3]);
+      }
       ctx.beginPath();
       ctx.arc(bx, by, radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+      ctx.setLineDash([]);
     }
 
     animFrameRef.current = requestAnimationFrame(draw);
