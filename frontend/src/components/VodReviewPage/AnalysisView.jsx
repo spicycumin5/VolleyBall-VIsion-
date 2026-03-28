@@ -12,7 +12,7 @@ export default function AnalysisView({ videoUrl, annotationUrl, actionsUrl }) {
     if (!actionsUrl) return;
     loadActionClips(actionsUrl, {
       fps: 60,        // match your video's fps
-      minConf: 0.05,   // filter out noise below 30% confidence
+      minConf: 0.25,   // filter out noise below 30% confidence
       gapFrames: 10,  // merge detections within 10 frames of each other
       padSeconds: 1,  // add 1s of context before/after each clip
     }).then(setClips);
