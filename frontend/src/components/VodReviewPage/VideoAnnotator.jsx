@@ -33,7 +33,7 @@ function getBallPos(ball) {
 
 // ── Main component ─────────────────────────────────────────
 
-function VideoAnnotator({ url, annotationUrl, activeClip }) {
+function VideoAnnotator({ url, annotationUrl, activeClip, onTimeUpdate, onAnnotationsLoaded }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const animFrameRef = useRef(null);
@@ -66,6 +66,7 @@ function VideoAnnotator({ url, annotationUrl, activeClip }) {
           .map((line) => JSON.parse(line));
         annotationsRef.current = frames;
         setLoaded(true);
+        if (onAnnotationsLoaded) onAnnotationsLoaded(frames);
       })
       .catch((err) => console.error("Failed to load annotations:", err));
   }, [annotationUrl]);
@@ -125,6 +126,7 @@ function VideoAnnotator({ url, annotationUrl, activeClip }) {
       return;
     }
 
+    if (onTimeUpdate) onTimeUpdate(video.currentTime);
     const totalFrames = annotationsRef.current.length;
     const fps = totalFrames / duration;
     const frameIdx = Math.min(
