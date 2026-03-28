@@ -5,7 +5,7 @@ import { loadActionClips } from "../components/VodReviewPage/clusterActions";
 import VideoAnnotator from "../components/VodReviewPage/VideoAnnotator";
 import Playlist from "../components/VodReviewPage/Playlist";
 import SESSIONS from "../assets/videos/sessions";
-import BallSpeedChart from "../components/VodReviewPage/Ballspeedchart";
+// import BallSpeedChart from "../components/VodReviewPage/Ballspeedchart";
 import "./VodReviewPage.css";
 
 export default function VodReviewPage() {
