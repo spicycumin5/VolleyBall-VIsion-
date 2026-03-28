@@ -27,6 +27,22 @@ pip install -r python/requirements.txt
 For running, make sure to `source .venv/bin/activate` to be in the virtual environment if you don't have the system packages globally.
 
 Download `msmt_sbs_R101-ibn.pth` to `python/weights` to make `test.py` work.
+
+### Downloading models
+
+You can find models in the [Releases tab](https://github.com/spicycumin5/VolleyBall-VIsion-/releases). `yolo26x.pt` is a standard model and will be downloaded on first run if it is not found, and the same is true for the generic ID models. The custom ball and aciton tracker are required to be downloaded. Simply download them to the project directory.
+
+If you want to use SAM3 model, download the model parts, and then run this in your project directory:
+
+``` sh
+cat sam3.pt.part-* > sam3.pt
+```
+
+And if you're not on UNIX, what are you doing with your life?
+
+These models can be passed into `python/test.py` as flag paths. See the [Python README](./python/README.md) for more info.
+
+
 ## For the website
 
 To run the site, navigate to the **frontend** file:
