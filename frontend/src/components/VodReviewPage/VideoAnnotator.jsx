@@ -13,27 +13,26 @@ function getPlayerColor(tid) {
   return PLAYER_COLORS[tid % PLAYER_COLORS.length];
 }
 
-// ── Extract ball position from either annotation format ─────
-// Old format: { x: 885, y: 348, conf: 0.52 }
-// New format: { tid: 1, box: [x1,y1,x2,y2], center: [x,y], conf: 0.52, predicted: false }
+// ── Extract ball position from annotation ──────────────────
+// Format: { tid, box: [x1,y1,x2,y2], center: [x,y], conf, predicted }
+// ball may be null — returns null in that case.
 function getBallPos(ball) {
   if (!ball || ball.conf <= 0) return null;
-  let x, y;
-  if (ball.center) {
-    [x, y] = ball.center;
-  } else if (ball.x !== undefined) {
-    x = ball.x;
-    y = ball.y;
-  } else {
-    return null;
-  }
+  if (!ball.center) return null;
+  const [x, y] = ball.center;
   if (x < 0 || y < 0) return null;
-  return { x, y, conf: ball.conf, predicted: ball.predicted ?? false };
+  return {
+    x,
+    y,
+    box: ball.box ?? null,
+    conf: ball.conf,
+    predicted: ball.predicted ?? false,
+  };
 }
 
 // ── Main component ─────────────────────────────────────────
 
-function VideoAnnotator({ url, annotationUrl, activeClip }) {
+function VideoAnnotator({ url, annotationUrl, activeClip, onTimeUpdate, onAnnotationsLoaded }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const animFrameRef = useRef(null);
@@ -54,18 +53,18 @@ function VideoAnnotator({ url, annotationUrl, activeClip }) {
     }
   }, [activeClip]);
 
-  // ── Load JSONL annotations ────────────────────────────────
+  // ── Load JSON annotations ─────────────────────────────────
+  // Format: a JSON array of frame objects, each with { frame, ball, players }
   useEffect(() => {
     if (!annotationUrl) return;
     fetch(annotationUrl)
-      .then((r) => r.text())
-      .then((text) => {
-        const frames = text
-          .trim()
-          .split("\n")
-          .map((line) => JSON.parse(line));
-        annotationsRef.current = frames;
+      .then((r) => r.json())
+      .then((frames) => {
+        // Sort by frame number to guarantee correct temporal order
+        const sorted = [...frames].sort((a, b) => a.frame - b.frame);
+        annotationsRef.current = sorted;
         setLoaded(true);
+        if (onAnnotationsLoaded) onAnnotationsLoaded(sorted);
       })
       .catch((err) => console.error("Failed to load annotations:", err));
   }, [annotationUrl]);
@@ -117,58 +116,59 @@ function VideoAnnotator({ url, annotationUrl, activeClip }) {
     const ch = canvas.height;
     ctx.clearRect(0, 0, cw, ch);
 
-    // Map current video time → frame index
-    // Bail if video duration isn't ready yet
     const duration = video.duration;
     if (!duration || !isFinite(duration)) {
       animFrameRef.current = requestAnimationFrame(draw);
       return;
     }
 
-    const totalFrames = annotationsRef.current.length;
+    if (onTimeUpdate) onTimeUpdate(video.currentTime);
+
+    const frames = annotationsRef.current;
+    const totalFrames = frames.length;
     const fps = totalFrames / duration;
-    const frameIdx = Math.min(
-      Math.max(0, Math.round(video.currentTime * fps)),
-      totalFrames - 1
-    );
-    const data = annotationsRef.current[frameIdx];
+
+    // Map current time → nearest frame index in the sorted array
+    const targetFrame = Math.round(video.currentTime * fps);
+    const frameIdx = Math.min(Math.max(0, targetFrame), totalFrames - 1);
+    const data = frames[frameIdx];
     if (!data) {
       animFrameRef.current = requestAnimationFrame(draw);
       return;
     }
 
-    // Scale factors: annotation pixel coords → canvas coords
-    // The <video> element includes the controls bar, so the actual
-    // picture area is smaller than the element. Compute the picture
-    // rect using the intrinsic aspect ratio.
+    // ── Compute picture rect ──────────────────────────────────
+    // The <video> element may include a controls bar below the picture.
+    // Derive the actual picture area from the intrinsic aspect ratio so
+    // that all annotation coordinates map to the correct screen position.
     const videoAspect = videoSize.w / videoSize.h;
     const elemAspect = cw / ch;
 
     let picW, picH, offsetX, offsetY;
     if (elemAspect > videoAspect) {
-      // element is wider than video — pillarboxed (black bars on sides)
+      // Element wider than video → pillarboxed
       picH = ch;
       picW = ch * videoAspect;
       offsetX = (cw - picW) / 2;
       offsetY = 0;
     } else {
-      // element is taller than video — letterboxed (black bar at bottom, i.e. controls)
+      // Element taller than video → letterboxed (controls at bottom)
       picW = cw;
       picH = cw / videoAspect;
       offsetX = 0;
-      offsetY = 0; // video picture sits at top, controls fill the gap below
+      offsetY = 0;
     }
 
     const sx = picW / videoSize.w;
     const sy = picH / videoSize.h;
 
-    // ── Ball trail (last N positions) ────────────────────────
+    // ── Ball trail ────────────────────────────────────────────
     if (showTrail) {
       const trailLen = 30;
       const startIdx = Math.max(0, frameIdx - trailLen);
       const trailPts = [];
       for (let i = startIdx; i <= frameIdx; i++) {
-        const f = annotationsRef.current[i];
+        const f = frames[i];
         const bp = getBallPos(f?.ball);
         if (bp) {
           trailPts.push({ x: bp.x * sx + offsetX, y: bp.y * sy + offsetY, age: frameIdx - i });
@@ -177,18 +177,17 @@ function VideoAnnotator({ url, annotationUrl, activeClip }) {
       if (trailPts.length > 1) {
         for (let i = 1; i < trailPts.length; i++) {
           const alpha = 1 - trailPts[i].age / trailLen;
-          const width = 1 + 2 * alpha;
           ctx.beginPath();
           ctx.moveTo(trailPts[i - 1].x, trailPts[i - 1].y);
           ctx.lineTo(trailPts[i].x, trailPts[i].y);
-          ctx.strokeStyle = `rgba(255, 220, 40, ${alpha * 0.9})`;
-          ctx.lineWidth = width;
+          ctx.strokeStyle = `rgba(0, 33, 255, ${alpha * 0.9})`;
+          ctx.lineWidth = 1 + 2 * alpha;
           ctx.stroke();
         }
       }
     }
 
-    // ── Player bounding boxes ────────────────────────────────
+    // ── Player bounding boxes ─────────────────────────────────
     if (showPlayers && data.players) {
       for (const p of data.players) {
         if (p.conf < minConf) continue;
@@ -199,16 +198,13 @@ function VideoAnnotator({ url, annotationUrl, activeClip }) {
         const bh = (y2 - y1) * sy;
         const color = getPlayerColor(p.tid);
 
-        // Box
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
         ctx.strokeRect(bx, by, bw, bh);
 
-        // Fill
         ctx.fillStyle = color + "18";
         ctx.fillRect(bx, by, bw, bh);
 
-        // Label
         if (showLabels) {
           const stateTag = p.state && p.state !== "player" ? ` ${p.state}` : "";
           const label = `#${p.tid}${stateTag}`;
@@ -228,35 +224,40 @@ function VideoAnnotator({ url, annotationUrl, activeClip }) {
       }
     }
 
-    // ── Ball marker ──────────────────────────────────────────
+    // ── Ball marker ───────────────────────────────────────────
     const ballPos = getBallPos(data.ball);
     if (showBall && ballPos) {
-      const bx = ballPos.x * sx + offsetX;
-      const by = ballPos.y * sy + offsetY;
-      const radius = 8;
-      const ballColor = ballPos.predicted ? "rgba(255, 220, 40, 0.45)" : "#FFDC28";
+      if (ballPos.box) {
+        const [x1, y1, x2, y2] = ballPos.box;
+        const bx = x1 * sx + offsetX;
+        const by = y1 * sy + offsetY;
+        const bw = (x2 - x1) * sx;
+        const bh = (y2 - y1) * sy;
 
-      // Outer glow
-      const grad = ctx.createRadialGradient(bx, by, 0, bx, by, radius * 2.5);
-      grad.addColorStop(0, ballPos.predicted ? "rgba(255, 220, 40, 0.3)" : "rgba(255, 220, 40, 0.6)");
-      grad.addColorStop(1, "rgba(255, 220, 40, 0)");
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(bx, by, radius * 2.5, 0, Math.PI * 2);
-      ctx.fill();
+        ctx.strokeStyle = ballPos.predicted ? "rgba(0, 33, 255, 0.5)" : "#0021ff";
+        ctx.lineWidth = 2;
+        if (ballPos.predicted) ctx.setLineDash([4, 3]);
+        ctx.strokeRect(bx, by, bw, bh);
+        ctx.setLineDash([]);
 
-      // Inner circle (dashed outline if predicted)
-      ctx.fillStyle = ballColor;
-      ctx.strokeStyle = "#000";
-      ctx.lineWidth = 1.5;
-      if (ballPos.predicted) {
-        ctx.setLineDash([3, 3]);
+        ctx.fillStyle = ballPos.predicted
+          ? "rgba(0, 33, 255, 0.06)"
+          : "rgba(0, 33, 255, 0.12)";
+        ctx.fillRect(bx, by, bw, bh);
+      } else {
+        // Fallback: crosshair at center point
+        const cx = ballPos.x * sx + offsetX;
+        const cy = ballPos.y * sy + offsetY;
+        const arm = 6;
+        ctx.strokeStyle = "#0021ff";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(cx - arm, cy);
+        ctx.lineTo(cx + arm, cy);
+        ctx.moveTo(cx, cy - arm);
+        ctx.lineTo(cx, cy + arm);
+        ctx.stroke();
       }
-      ctx.beginPath();
-      ctx.arc(bx, by, radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.setLineDash([]);
     }
 
     animFrameRef.current = requestAnimationFrame(draw);
@@ -314,10 +315,7 @@ function VideoAnnotator({ url, annotationUrl, activeClip }) {
         <div className="text-sm text-gray-500 px-1">Loading annotations…</div>
       )}
     </div>
-    
-    
   );
-  
 }
 
 export default VideoAnnotator;

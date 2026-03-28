@@ -20,7 +20,7 @@
   background: rgba(23, 23, 23, 0.8);
   backdrop-filter: blur(10px);
   border-bottom: 2px solid #fb923c; /* Brand Orange "Glow" line */
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  /* box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); */
   z-index: 100;
 }
 
@@ -31,7 +31,7 @@
   font-weight: 700;
   color: #fb923c; /* Orange accent */
   background: rgba(251, 146, 60, 0.1);
-  border: 1px solid rgba(251, 146, 60, 0.3);
+  /* border: 1px solid rgba(251, 146, 60, 0.3); */
   border-radius: 4px;
   padding: 6px 12px;
   transition: all 0.2s ease;
@@ -40,15 +40,15 @@
 .vod__back:hover {
   background: #fb923c;
   color: #000;
-  box-shadow: 0 0 15px rgba(251, 146, 60, 0.4);
+  /* box-shadow: 0 0 15px rgba(251, 146, 60, 0.4); */
 }
 
 .vod__title {
   font-size: 18px;
-  font-weight: 800;
-  text-transform: italic; /* Aggressive sports look */
+  font-weight: 600;
+  /* text-transform: italic; Aggressive sports look */
   color: #ffffff;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+  /* text-shadow: 0 0 10px rgba(255, 255, 255, 0.2); */
 }
 
 /* --- BODY & PLAYER --- */
@@ -73,10 +73,10 @@
 
 /* --- SIDEBAR: Dark Mode Console Style --- */
 .vod__sidebar {
-  width: 320px;
+  /* width: 320px; */
   flex-shrink: 0;
   background: rgba(23, 23, 23, 0.6);
-  border: 1px solid #262626;
+  /* border: 1px solid #262626; */
   border-radius: 12px;
   display: flex;
   flex-direction: column;

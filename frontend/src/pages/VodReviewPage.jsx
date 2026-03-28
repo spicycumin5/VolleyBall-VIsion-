@@ -5,17 +5,21 @@ import { loadActionClips } from "../components/VodReviewPage/clusterActions";
 import VideoAnnotator from "../components/VodReviewPage/VideoAnnotator";
 import Playlist from "../components/VodReviewPage/Playlist";
 import SESSIONS from "../assets/videos/sessions";
+import BallSpeedChart from "../components/VodReviewPage/Ballspeedchart";
 import "./VodReviewPage.css";
 
 export default function VodReviewPage() {
   const location = useLocation();
   const navigate = useNavigate();
+
+  const [currentTime, setCurrentTime] = useState(0);
+  const [annotations, setAnnotations] = useState([]);
  
   const { sessionKey } = location.state || {};
   const session = SESSIONS.find((s) => s.key === sessionKey);
  
   const [clips, setClips] = useState([]);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(-1);
  
   // Load and cluster action detections into playlist clips
   useEffect(() => {
@@ -24,7 +28,7 @@ export default function VodReviewPage() {
       fps: 60,
       minConf: 0.01,
       gapFrames: 10,
-      padSeconds: 1,
+      padSeconds: 0.5,
       minClipFrames: 1,
     }).then(setClips);
   }, [session?.actionURL]);
@@ -53,6 +57,8 @@ export default function VodReviewPage() {
             url={session.videoSrc}
             annotationUrl={session.annotationUrl}
             activeClip={activeClip}
+            onTimeUpdate={setCurrentTime}
+            onAnnotationsLoaded={setAnnotations}
           />
         </div>
  

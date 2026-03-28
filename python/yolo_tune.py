@@ -83,6 +83,9 @@ def parse_args():
         default=sorted(TASK_CONFIGS.keys()),
         help="Which task-specific models to prepare/train",
     )
+    parser.add_argument("--no-player", action="store_true", help="Skip preparing/training the player model")
+    parser.add_argument("--no-action", action="store_true", help="Skip preparing/training the action model")
+    parser.add_argument("--no-ball", action="store_true", help="Skip preparing/training the ball model")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help="Dataset sampling seed")
     parser.add_argument(
         "--parallel",
@@ -94,7 +97,28 @@ def parse_args():
         action="store_true",
         help="Only prepare per-task datasets and data.yaml files",
     )
+    parser.add_argument(
+        "--continue-training",
+        action="store_true",
+        help="Resume each task from its most recently saved checkpoint when available",
+    )
     return parser.parse_args()
+
+
+def resolve_selected_tasks(args):
+    disabled_tasks = set()
+    if args.no_player:
+        disabled_tasks.add("players")
+    if args.no_action:
+        disabled_tasks.add("actions")
+    if args.no_ball:
+        disabled_tasks.add("ball")
+
+    selected_tasks = [task_name for task_name in args.tasks if task_name not in disabled_tasks]
+    if not selected_tasks:
+        raise ValueError("No tasks selected for dataset preparation/training after applying disable flags.")
+
+    return selected_tasks
 
 
 def ensure_clean_dir(path):
@@ -384,6 +408,32 @@ def build_training_callbacks(task_name, device, imgsz, project_dir, progress_sin
     }
 
 
+def find_latest_checkpoint(project_dir, task_name):
+    run_dirs = []
+    seen = set()
+    for pattern in (task_name, f"{task_name}*"):
+        for path in project_dir.glob(pattern):
+            resolved = path.resolve()
+            if resolved in seen or not path.is_dir():
+                continue
+            seen.add(resolved)
+            run_dirs.append(path)
+
+    if not run_dirs:
+        return None
+
+    latest_run_dir = max(run_dirs, key=lambda path: path.stat().st_mtime)
+    last_path = latest_run_dir / "weights" / "last.pt"
+    best_path = latest_run_dir / "weights" / "best.pt"
+
+    if last_path.is_file():
+        return {"path": last_path, "resume": True}
+    if best_path.is_file():
+        return {"path": best_path, "resume": False}
+
+    return None
+
+
 @contextmanager
 def quiet_ultralytics_progress():
     from ultralytics.engine import trainer as trainer_module
@@ -400,11 +450,15 @@ def quiet_ultralytics_progress():
         ultralytics_logger.setLevel(original_level)
 
 
-def train_task_model_on_device(model_path, dataset_info, device, epochs, batch, project_dir, progress_sink=None):
+def train_task_model_on_device(model_path, dataset_info, device, epochs, batch, project_dir, progress_sink=None, continue_training=False):
     from ultralytics.models import YOLO
 
     task_name = dataset_info["task_name"]
-    model = YOLO(model_path)
+    checkpoint_info = find_latest_checkpoint(project_dir, task_name) if continue_training else None
+    checkpoint_path = checkpoint_info["path"] if checkpoint_info is not None else None
+    should_resume = checkpoint_info["resume"] if checkpoint_info is not None else False
+    model_source = checkpoint_path if checkpoint_path is not None else model_path
+    model = YOLO(model_source)
     imgsz = dataset_info["imgsz"]
     callbacks = build_training_callbacks(task_name, device, imgsz, project_dir, progress_sink)
     for event_name, callback in callbacks.items():
@@ -420,6 +474,7 @@ def train_task_model_on_device(model_path, dataset_info, device, epochs, batch, 
                 device=device,
                 project=str(project_dir.resolve()),
                 name=task_name,
+                resume=should_resume,
             )
     except Exception as exc:
         emit_progress_event(
@@ -438,7 +493,7 @@ def parse_devices(device_arg):
     return [part.strip() for part in device_text.split(",") if part.strip()]
 
 
-def train_task_worker(model_path, dataset_info, device, epochs, batch, project_dir, progress_queue):
+def train_task_worker(model_path, dataset_info, device, epochs, batch, project_dir, progress_queue, continue_training):
     train_task_model_on_device(
         model_path=model_path,
         dataset_info=dataset_info,
@@ -447,6 +502,7 @@ def train_task_worker(model_path, dataset_info, device, epochs, batch, project_d
         batch=batch,
         project_dir=project_dir,
         progress_sink=progress_queue.put,
+        continue_training=continue_training,
     )
 
 
@@ -464,6 +520,7 @@ def train_prepared_models(args, prepared):
                     batch=args.batch,
                     project_dir=args.project_dir,
                     progress_sink=display.update,
+                    continue_training=args.continue_training,
                 )
             return
 
@@ -476,7 +533,7 @@ def train_prepared_models(args, prepared):
             for dataset_info, device in zip(chunk, devices):
                 process = multiprocessing.Process(
                     target=train_task_worker,
-                    args=(args.model, dataset_info, device, args.epochs, args.batch, args.project_dir, progress_queue),
+                    args=(args.model, dataset_info, device, args.epochs, args.batch, args.project_dir, progress_queue, args.continue_training),
                 )
                 process.start()
                 processes.append((dataset_info["task_name"], process, device))
@@ -522,9 +579,10 @@ def print_dataset_summary(dataset_info):
 
 def main():
     args = parse_args()
+    selected_tasks = resolve_selected_tasks(args)
     prepared = []
 
-    for task_name in args.tasks:
+    for task_name in selected_tasks:
         seed = args.seed + sum(ord(ch) for ch in task_name)
         dataset_info = prepare_task_dataset(task_name, TASK_CONFIGS[task_name], args.prepared_root, seed)
         print_dataset_summary(dataset_info)

@@ -5,11 +5,11 @@
   flex-direction: column;
   height: 100%;
   background: #111111; /* Slightly darker for better text pop */
-  border-left: 1px solid #262626;
+  /* border-left: 1px solid #262626; */
 }
 
 .playlist__header {
-  padding: 24px 20px; /* More breathing room */
+  padding: 18px 15px; /* More breathing room */
   background: #1a1a1a;
   border-bottom: 2px solid #262626;
 }
@@ -35,12 +35,14 @@
 /* THE ROW */
 .playlist__row {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 16px;
-  padding: 16px; /* Larger hit area */
+  padding-left: 2px;
+  padding: 4px; /* Larger hit area */
   background: #1a1a1a; /* Opaque background for readability */
-  border: 1px solid #262626;
-  border-radius: 10px;
+  /* border: 1px solid #262626; */
+  border-radius: 5px;
   cursor: pointer;
   transition: all 0.2s ease-out;
 }
@@ -55,11 +57,11 @@
 .playlist__row--active {
   background: #fb923c; /* Solid Orange background */
   border-color: #fb923c;
-  box-shadow: 0 4px 15px rgba(251, 146, 60, 0.3);
+  /* box-shadow: 0 4px 15px rgba(251, 146, 60, 0.3); */
 }
 
 .playlist__index {
-  font-family: 'Inter', sans-serif;
+  /* font-family: 'Inter', sans-serif; */
   font-weight: 900;
   font-size: 14px;
   color: #444444;
@@ -78,7 +80,7 @@
 
 .playlist__name {
   font-size: 15px; /* Bumped up */
-  font-weight: 700;
+  font-weight: 600;
   color: #ffffff; /* Pure white for maximum contrast */
 }
 

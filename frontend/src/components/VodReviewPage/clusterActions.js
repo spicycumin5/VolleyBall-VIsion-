@@ -19,29 +19,32 @@
  *   6. Sort all events chronologically
  */
 
+// States that represent a player doing nothing notable — skip these.
+const IGNORED_STATES = new Set(["player", "unknown", ""]);
+ 
 /**
  * @param {Array} rawActions   — array of { player_id, action, frame, action_conf }
  * @param {Object} opts
  * @param {number} opts.fps           — video frame rate (default 30)
- * @param {number} opts.minConf       — minimum action_conf to keep (default 0.3)
+ * @param {number} opts.minConf       — minimum action_conf to keep (default 0.02)
  * @param {number} opts.gapFrames     — max frame gap to still merge into one event (default 10)
  * @param {number} opts.padSeconds    — seconds of padding around the clip for context (default 1)
  * @param {number} opts.minClipFrames — discard clusters shorter than this (default 2)
  * @returns {Array} clips shaped for Playlist: { id, title, action, playerId, start, end, ... }
  */
-
-
 export function clusterActions(rawActions, opts = {}) {
   const {
     fps = 30,
-    minConf = 0.01,
+    minConf = 0.02,
     gapFrames = 10,
     padSeconds = 1,
-    minClipFrames = 1,
+    minClipFrames = 2,
   } = opts;
  
-  // 1. Filter low-confidence detections
-  const filtered = rawActions.filter((d) => d.action_conf >= minConf);
+  // 1. Filter low-confidence detections and idle states
+  const filtered = rawActions.filter(
+    (d) => d.action_conf >= minConf && !IGNORED_STATES.has(d.action)
+  );
  
   // 2. Group by (player_id, action)
   const groups = new Map();
@@ -54,8 +57,7 @@ export function clusterActions(rawActions, opts = {}) {
   // 3–4. Cluster consecutive frames within each group
   const clusters = [];
  
-  for (const [key, detections] of groups) {
-    // Sort by frame
+  for (const [, detections] of groups) {
     detections.sort((a, b) => a.frame - b.frame);
  
     let clusterStart = 0;
@@ -68,13 +70,12 @@ export function clusterActions(rawActions, opts = {}) {
         const slice = detections.slice(clusterStart, i);
  
         if (slice.length >= minClipFrames) {
-          const peakConf = Math.max(...slice.map((d) => d.action_conf));
           clusters.push({
             playerId: slice[0].player_id,
             action: slice[0].action,
             frameStart: slice[0].frame,
             frameEnd: slice[slice.length - 1].frame,
-            peakConf,
+            peakConf: Math.max(...slice.map((d) => d.action_conf)),
             count: slice.length,
           });
         }
@@ -94,7 +95,7 @@ export function clusterActions(rawActions, opts = {}) {
  
       return {
         id: i + 1,
-        title: `Player ${c.playerId} — ${actionLabel}`,
+        title: actionLabel,
         action: c.action,
         playerId: c.playerId,
         start: Math.round(startSec * 100) / 100,

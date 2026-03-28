@@ -6,7 +6,7 @@ function Header({ value, onChange }){
     return (
         <header className="flex justify-between bg-black py-2 px-4 border-b-2 border-slate-900">
             <h2 
-                className="cursor-pointer text-orange-300 font-bold text-4xl tracking-tighter"
+                className="cursor-pointer text-[#fb923c] font-bold text-4xl tracking-tighter"
                 onClick={() => {navigate("/home")}}
             >
                 VolleyVision
