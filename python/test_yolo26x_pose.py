@@ -42,11 +42,16 @@ from ball_tracker import MultiBallTracker
 from player_action_db import PlayerActionDatabase
 from tracking_shared import (
     collect_action_rows,
+    configure_tracking_memory,
     configure_runtime_device,
     create_strongsort,
     load_yolo_models,
     move_model_to_device,
     predict_detections,
+    render_video_from_json,
+    rewrite_json_outputs,
+    resolve_json_output_path,
+    resolve_video_output_path,
     resolve_action_json_output,
     resolve_conf,
     resolve_device,
@@ -73,18 +78,24 @@ parser.add_argument("--model", default=None, help="Optional pose model path. Def
 parser.add_argument("--player_model", default="yolo26x-pose", help="Path or model name for the player pose detector")
 parser.add_argument("--action_model", default=None, help="Path to action detector weights")
 parser.add_argument("--ball_model", default=None, help="Path to ball detector weights")
+parser.add_argument("--reid_weights", default="osnet_ain_x1_0_msmt17.pt", help="ReID weights for StrongSORT")
 parser.add_argument("--input", required=True, help="Input video path")
-parser.add_argument("--output", required=True, help="Output video path")
+parser.add_argument("--output", default=None, help="Output video path")
 parser.add_argument("--show_conf", default=False, action="store_true", help="Whether to show the confidence scores")
 parser.add_argument("--conf", "--confs", dest="conf", type=float, default=0.2, help="Default confidence threshold for player, action, and ball detection")
 parser.add_argument("--player_conf", type=float, default=None, help="Confidence threshold override for player detection")
 parser.add_argument("--action_conf", type=float, default=None, help="Confidence threshold override for action detection")
-parser.add_argument("--ball_conf", type=float, default=None, help="Confidence threshold override for ball detection")
+parser.add_argument("--ball_conf", type=float, default=0.8, help="Confidence threshold override for ball detection")
 parser.add_argument("--imgsz", type=int, default=1920, help="Image size for YOLO. 640, 1280, and 1920 are good")
 parser.add_argument("--player_imgsz", type=int, default=None, help="Optional inference size override for player model")
 parser.add_argument("--action_imgsz", type=int, default=None, help="Optional inference size override for action model")
 parser.add_argument("--ball_imgsz", type=int, default=None, help="Optional inference size override for ball model")
 parser.add_argument("--ball_gravity", type=float, default=600.0, help="Ball-tracker gravity in pixels/sec^2")
+parser.add_argument("--ball_blacklist", type=int, default=5, help="Blacklist a ball location after this many stagnant frames")
+parser.add_argument("--ball_memory_frames", type=int, default=120, help="Live ball tracker coast length in frames")
+parser.add_argument("--ball_gap_fill_frames", type=int, default=480, help="Maximum post-process ball gap fill length in frames")
+parser.add_argument("--cubic", action="store_true", default=False, help="Use cubic interpolation instead of physics for post-process ball gap filling")
+parser.add_argument("--memory_frames", type=int, default=360, help="Canonical ID memory window in frames")
 parser.add_argument("--heatmap_conf", type=int, default=0.5, help="Confidence for the ball tracker")
 parser.add_argument("--heatmap_alpha", type=float, default=0.0, help="Alpha for heatmap overlay")
 parser.add_argument("--json_output", default=None, help="Path to output json")
@@ -92,6 +103,7 @@ parser.add_argument("--action_json_output", default=None, help="Path to output p
 parser.add_argument("--db_output", default=None, help="Path to output sqlite database")
 parser.add_argument("--dino", action="store_true", default=False, help="Deprecated and ignored. Player tracking always uses BoxMOT")
 parser.add_argument("--keypoint_conf", type=float, default=0.35, help="Minimum pose keypoint confidence to draw")
+parser.add_argument("--no-mp4", action="store_true", default=False, help="Skip writing the MP4 output")
 parser.add_argument("--device", default="auto", help="Device to use (for example: auto, cpu, 0, or 0,1)")
 
 
@@ -185,7 +197,7 @@ def main():
     device = resolve_device(args.device, MASKED_DEVICE)
     configure_runtime_device(device)
 
-    tracker = create_strongsort(device)
+    tracker = create_strongsort(device, reid_weights=args.reid_weights)
     pose_model_name = args.player_model or args.model or "yolo26x-pose"
     player_model = move_model_to_device(YOLO(pose_model_name), device)
     _, _, action_model, ball_model, _ = load_yolo_models(
@@ -197,21 +209,30 @@ def main():
 
     cap = cv2.VideoCapture(args.input)
     fps = resolve_video_fps(cap)
+    configure_tracking_memory(args.memory_frames)
     frame_size = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    ball_tracker = MultiBallTracker(max_coast_frames=30, fps=fps, gravity=args.ball_gravity) if ball_model is not None else None
+    ball_tracker = MultiBallTracker(
+        max_coast_frames=max(int(args.ball_memory_frames), 1),
+        fps=fps,
+        gravity=args.ball_gravity,
+        stagnant_frame_limit=max(int(args.ball_blacklist), 1),
+    ) if ball_model is not None else None
 
-    os.makedirs(os.path.split(args.output)[0], exist_ok=True)
-    out = cv2.VideoWriter(args.output, cv2.VideoWriter_fourcc(*"mp4v"), fps, frame_size)
+    output_path = resolve_video_output_path(args.input, args.output, args.no_mp4)
+    json_output_path = resolve_json_output_path(output_path, args.json_output, args.input)
 
     json_file = None
-    if args.json_output:
-        os.makedirs(os.path.split(args.json_output)[0], exist_ok=True)
-        json_file = open(args.json_output, "w")
+    if json_output_path:
+        json_parent = os.path.split(json_output_path)[0]
+        if json_parent:
+            os.makedirs(json_parent, exist_ok=True)
+        json_file = open(json_output_path, "w")
 
-    action_json_output = resolve_action_json_output(args.json_output, args.action_json_output)
+    action_json_output = resolve_action_json_output(json_output_path, args.action_json_output)
     action_rows = [] if action_json_output else None
+    ball_track_snapshots = []
 
     player_action_db = None
     if args.db_output:
@@ -221,7 +242,7 @@ def main():
     action_conf = resolve_conf(args.action_conf, args.conf)
     ball_conf = resolve_conf(args.ball_conf, args.conf)
 
-    for frame_idx in track(range(total_frames)):
+    for frame_idx in track(range(total_frames), description="Inference..."):
         ret, frame = cap.read()
         if not ret:
             break
@@ -256,20 +277,34 @@ def main():
             frame_idx,
             player_callback=make_pose_callback(args, pose_detections),
         )
-        final_ball = track_ball(ball_dets, ball_tracker, annotated_frame) if ball_tracker is not None else None
-        out.write(annotated_frame)
+        if ball_tracker is not None:
+            ball_result = track_ball(ball_dets, ball_tracker, annotated_frame, return_track_snapshot=True)
+            final_ball, track_snapshot = ball_result
+            ball_track_snapshots.append(track_snapshot)
+        else:
+            final_ball = None
         write_json_frame(json_file, frame_idx, final_ball, frame_players_data)
         collect_action_rows(action_rows, frame_idx, frame_players_data)
         if player_action_db is not None:
             player_action_db.add_frame_players(frame_idx, frame_players_data)
 
     cap.release()
-    out.release()
     if json_file:
         json_file.close()
     write_action_table(action_json_output, action_rows)
     if player_action_db is not None:
         player_action_db.close()
+    rewrite_json_outputs(
+        json_output_path,
+        action_json_output,
+        fps=fps,
+        ball_gravity=args.ball_gravity,
+        ball_gap_fill_frames=args.ball_gap_fill_frames,
+        ball_interpolation_mode="cubic" if args.cubic else "physics",
+        ball_blacklist_frames=args.ball_blacklist,
+        ball_track_snapshots=ball_track_snapshots,
+    )
+    render_video_from_json(args.input, json_output_path, output_path, fps, frame_size)
 
 
 if __name__ == "__main__":
