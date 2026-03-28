@@ -73,11 +73,7 @@ fi
       continue
     fi
 
-    action_file=""
-    action_candidate="$ANNOTATIONS_DIR/${annotation_file%.json}_actions.json"
-    if [[ -f "$action_candidate" ]]; then
-      action_file="$(basename "$action_candidate")"
-    fi
+    action_file="${annotation_file%.json}_actions.json"
 
     if [[ ${#thumbnail_files[@]} -gt 0 ]]; then
       thumbnail_file="${thumbnail_files[$((idx % ${#thumbnail_files[@]}))]}"
@@ -97,11 +93,7 @@ fi
     printf '    thumbnail: "%s",\n' "$thumbnail_value"
     printf '    videoSrc: "/videos/%s",\n' "$video_file"
     printf '    annotationUrl: "/annotations/%s",\n' "$annotation_file"
-    if [[ -n "$action_file" ]]; then
-      printf '    actionURL: "/annotations/%s",\n' "$action_file"
-    else
-      printf '    actionURL: null,\n'
-    fi
+    printf '    actionURL: "/annotations/%s",\n' "$action_file"
     printf '    clips: [],\n'
     printf '  }'
   done
