@@ -1,89 +1,122 @@
+/* VodReviewPage.css */
+
 .vod {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  background: #0a0a0a;
-  font-family: sans-serif;
+  /* Deep "Void" background with a subtle radial gradient */
+  background: radial-gradient(circle at top left, #1a1a1a, #050505);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #e5e5e5;
 }
- 
+
+/* --- TOPBAR: Broadcast Style --- */
 .vod__topbar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px 20px;
-  background: #171717;
-  border-bottom: 1px solid #262626;
+  justify-content: space-between; /* Space for the delete button we added earlier */
+  padding: 0 24px;
+  height: 60px;
+  background: rgba(23, 23, 23, 0.8);
+  backdrop-filter: blur(10px);
+  border-bottom: 2px solid #fb923c; /* Brand Orange "Glow" line */
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  z-index: 100;
 }
- 
+
 .vod__back {
-  font-size: 12px;
-  color: #a3a3a3;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  flex-shrink: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  color: #fb923c; /* Orange accent */
+  background: rgba(251, 146, 60, 0.1);
+  border: 1px solid rgba(251, 146, 60, 0.3);
+  border-radius: 4px;
+  padding: 6px 12px;
+  transition: all 0.2s ease;
 }
- 
+
 .vod__back:hover {
-  color: #ffffff;
+  background: #fb923c;
+  color: #000;
+  box-shadow: 0 0 15px rgba(251, 146, 60, 0.4);
 }
- 
+
 .vod__title {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 18px;
+  font-weight: 800;
+  text-transform: italic; /* Aggressive sports look */
   color: #ffffff;
-  margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
 }
- 
+
+/* --- BODY & PLAYER --- */
 .vod__body {
   display: flex;
   flex: 1;
+  padding: 20px;
+  gap: 20px;
+  overflow: hidden;
 }
- 
+
 .vod__player {
   flex: 1;
+  background: #000;
+  border-radius: 12px;
+  border: 1px solid #333;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.8);
   display: flex;
   flex-direction: column;
 }
- 
+
+/* --- SIDEBAR: Dark Mode Console Style --- */
 .vod__sidebar {
-  width: 288px;
+  width: 320px;
   flex-shrink: 0;
-  background: #ffffff;
+  background: rgba(23, 23, 23, 0.6);
+  border: 1px solid #262626;
+  border-radius: 12px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
- 
+
+/* --- ERROR & LOADING STATES --- */
 .vod__loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  font-size: 13px;
-  color: #a3a3a3;
+  background: #000;
+  color: #fb923c;
+  font-weight: bold;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  animation: pulse 1.5s infinite;
 }
- 
+
+@keyframes pulse {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+
 .vod-error {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  gap: 12px;
-  font-family: sans-serif;
-  font-size: 14px;
-  color: #737373;
+  background: #0a0a0a;
+  color: #ef4444; /* Alert Red */
+  text-align: center;
 }
- 
+
 .vod-error button {
-  font-size: 13px;
-  padding: 8px 16px;
-  border: 1px solid #d4d4d4;
-  border-radius: 6px;
-  background: none;
-  cursor: pointer;
+  margin-top: 20px;
+  background: transparent;
+  border: 2px solid #ef4444;
+  color: #ef4444;
+  font-weight: bold;
+  padding: 10px 24px;
+  border-radius: 99px;
+  transition: all 0.3s ease;
+}
+
+.vod-error button:hover {
+  background: #ef4444;
+  color: white;
 }

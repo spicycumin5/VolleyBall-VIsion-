@@ -1,0 +1,99 @@
+/* Playlist.css — High Visibility Edition */
+
+.playlist {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #111111; /* Slightly darker for better text pop */
+  border-left: 1px solid #262626;
+}
+
+.playlist__header {
+  padding: 24px 20px; /* More breathing room */
+  background: #1a1a1a;
+  border-bottom: 2px solid #262626;
+}
+
+.playlist__title {
+  font-size: 13px; /* Slightly larger */
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #fb923c; /* Brand Orange */
+  margin: 0;
+}
+
+.playlist__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px; /* More space between rows */
+}
+
+/* THE ROW */
+.playlist__row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px; /* Larger hit area */
+  background: #1a1a1a; /* Opaque background for readability */
+  border: 1px solid #262626;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease-out;
+}
+
+.playlist__row:hover {
+  background: #fb923c;
+  border-color: #444444;
+  transform: scale(1.02); /* Slight pop instead of slide */
+}
+
+/* ACTIVE STATE: High Contrast */
+.playlist__row--active {
+  background: #fb923c; /* Solid Orange background */
+  border-color: #fb923c;
+  box-shadow: 0 4px 15px rgba(251, 146, 60, 0.3);
+}
+
+.playlist__index {
+  font-family: 'Inter', sans-serif;
+  font-weight: 900;
+  font-size: 14px;
+  color: #444444;
+  min-width: 24px;
+}
+
+.playlist__row--active .playlist__index {
+  color: rgba(0, 0, 0, 0.5); /* Darker index on orange background */
+}
+
+.playlist__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.playlist__name {
+  font-size: 15px; /* Bumped up */
+  font-weight: 700;
+  color: #ffffff; /* Pure white for maximum contrast */
+}
+
+/* On the active orange row, make text dark for readability */
+.playlist__row--active .playlist__name {
+  color: #000000; 
+}
+
+.playlist__time {
+  font-size: 12px;
+  font-weight: 600;
+  color: #a3a3a3; /* Light gray */
+  font-family: monospace;
+}
+
+.playlist__row--active .playlist__time {
+  color: rgba(0, 0, 0, 0.7);
+}
