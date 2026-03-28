@@ -13,7 +13,8 @@ class KalmanBallTracker:
         # State Vector: [x, y, dx, dy] (Position and Velocity)
         # Measurement Vector: [x, y] (What TrackNet actually sees)
         self.kf = cv2.KalmanFilter(4, 2)
-        self.gravity = np.array([[np.float32(gravity)]], dtype=np.float32)
+        self.gravity_value = float(gravity)
+        self.gravity = np.array([[np.float32(self.gravity_value)]], dtype=np.float32)
 
         # Measurement Matrix (Translates state to measurement)
         self.kf.measurementMatrix = np.array([
@@ -27,6 +28,13 @@ class KalmanBallTracker:
         self.kf.measurementNoiseCov = np.eye(2, dtype=np.float32) * 1e-4
 
         self.is_tracking = False
+
+    def _update_gravity_control(self):
+        self.gravity = np.array([[np.float32(self.gravity_value)]], dtype=np.float32)
+
+    def set_gravity(self, gravity):
+        self.gravity_value = float(gravity)
+        self._update_gravity_control()
 
     def set_delta_t(self, delta_t):
         dt = max(float(delta_t), 1e-3)
@@ -47,6 +55,9 @@ class KalmanBallTracker:
             [0.0],
             [dt]
         ], np.float32)
+        if not hasattr(self, 'gravity_value'):
+            self.gravity_value = 0.0
+        self._update_gravity_control()
 
         q_pos = max(0.03 * dt * dt, 1e-4)
         q_vel = max(0.03 * dt, 1e-4)
@@ -97,15 +108,39 @@ class KalmanBallTracker:
 
 
 class MultiBallTracker:
-    def __init__(self, max_coast_frames=20, distance_thresh=150, fps=30.0, gravity=600.0):
+    def __init__(self, max_coast_frames=20, distance_thresh=150, fps=30.0, gravity=600.0,
+                 stagnant_frame_limit=5, stagnant_distance_thresh=4.0, blacklist_distance_thresh=None):
         self.tracks = {}
         self.next_id = 1
         self.max_coast_frames = max_coast_frames
         self.distance_thresh = distance_thresh
+        self.stagnant_frame_limit = stagnant_frame_limit
+        self.stagnant_distance_thresh = stagnant_distance_thresh
+        self.blacklist_distance_thresh = (
+            float(blacklist_distance_thresh)
+            if blacklist_distance_thresh is not None
+            else max(float(stagnant_distance_thresh), 1.0)
+        )
         self.delta_t = 1.0 / fps if fps and fps > 0 else 1.0 / 30.0
         self.fps = fps if fps and fps > 0 else 30.0
         self.gravity = gravity
         self.frame_index = 0
+        self.blacklisted_positions = []
+
+    def _is_blacklisted_detection(self, cx, cy):
+        point = np.array([float(cx), float(cy)], dtype=np.float32)
+        for blacklisted_point in self.blacklisted_positions:
+            if np.linalg.norm(point - blacklisted_point) <= self.blacklist_distance_thresh:
+                return True
+        return False
+
+    def _blacklist_track_position(self, track):
+        if track is None:
+            return
+        point = np.array(track['pos'], dtype=np.float32)
+        if self._is_blacklisted_detection(point[0], point[1]):
+            return
+        self.blacklisted_positions.append(point)
 
     def _estimate_velocity(self, history):
         if len(history) < 2:
@@ -127,11 +162,31 @@ class MultiBallTracker:
 
         return vx, vy
 
+    def _estimate_gravity(self, history):
+        if len(history) < 3:
+            return None
+
+        usable = list(history)[-3:]
+        (f1, _, y1), (f2, _, y2), (f3, _, y3) = usable
+        dt1 = max((f2 - f1) * self.delta_t, 1e-3)
+        dt2 = max((f3 - f2) * self.delta_t, 1e-3)
+        v1 = (y2 - y1) / dt1
+        v2 = (y3 - y2) / dt2
+        avg_dt = max(0.5 * (dt1 + dt2), 1e-3)
+        gravity = (v2 - v1) / avg_dt
+        return float(np.clip(gravity, 50.0, 4000.0))
+
     def _update_track_velocity(self, track):
         velocity = self._estimate_velocity(track['history'])
         if velocity is None:
             track['has_velocity'] = False
             return
+
+        estimated_gravity = self._estimate_gravity(track['history'])
+        if estimated_gravity is not None:
+            smoothed_gravity = 0.8 * float(track['gravity']) + 0.2 * estimated_gravity
+            track['gravity'] = float(np.clip(smoothed_gravity, 50.0, 4000.0))
+            track['kalman'].set_gravity(track['gravity'])
 
         track['kalman'].set_velocity(*velocity)
         track['velocity'] = [float(velocity[0]), float(velocity[1])]
@@ -139,6 +194,7 @@ class MultiBallTracker:
 
     def _primary_track_score(self, track):
         return (
+            int(track['stagnant_frames']) < int(self.stagnant_frame_limit),
             not track['is_predicted'],
             -int(track['missed']),
             float(track['conf']),
@@ -154,7 +210,11 @@ class MultiBallTracker:
         det_boxes = []
         for det in ball_dets:
             x1, y1, x2, y2, conf, cls = det
-            det_centers.append([(x1 + x2) / 2, (y1 + y2) / 2])
+            cx = (x1 + x2) / 2
+            cy = (y1 + y2) / 2
+            if self._is_blacklisted_detection(cx, cy):
+                continue
+            det_centers.append([cx, cy])
             det_confs.append(conf)
             det_boxes.append([float(x1), float(y1), float(x2), float(y2)])
         
@@ -166,6 +226,7 @@ class MultiBallTracker:
         for tid in active_ids:
             track = self.tracks[tid]
             track['kalman'].set_delta_t(self.delta_t)
+            track['kalman'].set_gravity(track['gravity'])
             apply_gravity = track['has_velocity'] and track['missed'] > 0
             pred = track['kalman'].predict(apply_gravity=apply_gravity)
             if pred is None:
@@ -198,6 +259,10 @@ class MultiBallTracker:
             last_pos = track['pos']
             dist_moved = np.linalg.norm(np.array([cx, cy]) - np.array(last_pos))
             track['total_dist'] += dist_moved
+            if dist_moved <= self.stagnant_distance_thresh:
+                track['stagnant_frames'] += 1
+            else:
+                track['stagnant_frames'] = 0
 
             track['history'].append((self.frame_index, float(cx), float(cy)))
             self._update_track_velocity(track)
@@ -226,6 +291,12 @@ class MultiBallTracker:
                     predicted_pos = track_preds[idx].tolist()
                 else:
                     predicted_pos = list(track['pos'])
+
+                dist_moved = np.linalg.norm(np.array(predicted_pos) - np.array(track['pos']))
+                if dist_moved <= self.stagnant_distance_thresh:
+                    track['stagnant_frames'] += 1
+                else:
+                    track['stagnant_frames'] = 0
 
                 track['pos'] = predicted_pos
                 width, height = track['size']
@@ -260,12 +331,21 @@ class MultiBallTracker:
                 'is_predicted': False,
                 'history': history,
                 'velocity': [0.0, 0.0],
+                'gravity': float(self.gravity),
                 'has_velocity': False,
+                'stagnant_frames': 0,
             }
             self.next_id += 1
 
         # 7. Purge Dead Tracks
-        dead_tracks = [tid for tid, data in self.tracks.items() if data['missed'] > self.max_coast_frames]
+        dead_tracks = []
+        for tid, data in self.tracks.items():
+            if data['missed'] > self.max_coast_frames:
+                dead_tracks.append(tid)
+                continue
+            if data['stagnant_frames'] >= self.stagnant_frame_limit:
+                self._blacklist_track_position(data)
+                dead_tracks.append(tid)
         for tid in dead_tracks:
             del self.tracks[tid]
 
