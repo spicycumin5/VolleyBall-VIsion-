@@ -4,6 +4,8 @@
   width: 288px;
   background: #ffffff;
   /* border-left: 1px solid #e5e5e5; */
+  overflow-y: auto;
+  max-height: calc(100vh - 80px);
 }
  
 .playlist__header {
@@ -23,6 +25,7 @@
 .playlist__list {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
 }
  
 .playlist__empty {
