@@ -5,7 +5,7 @@
   flex-direction: column;
   height: 100%;
   background: #111111; /* Slightly darker for better text pop */
-  border-left: 1px solid #262626;
+  /* border-left: 1px solid #262626; */
 }
 
 .playlist__header {
@@ -61,7 +61,7 @@
 }
 
 .playlist__index {
-  font-family: 'Inter', sans-serif;
+  /* font-family: 'Inter', sans-serif; */
   font-weight: 900;
   font-size: 14px;
   color: #444444;
@@ -80,7 +80,7 @@
 
 .playlist__name {
   font-size: 15px; /* Bumped up */
-  font-weight: 700;
+  font-weight: 600;
   color: #ffffff; /* Pure white for maximum contrast */
 }
 
