@@ -41,7 +41,7 @@ function VideoAnnotator({ url, annotationUrl, activeClip, onTimeUpdate, onAnnota
   const [loaded, setLoaded] = useState(false);
   const [showPlayers, setShowPlayers] = useState(true);
   const [showBall, setShowBall] = useState(true);
-  const [showTrail, setShowTrail] = useState(false);
+  const [showTrail, setShowTrail] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
   const [minConf, setMinConf] = useState(0.5);
   const [videoSize, setVideoSize] = useState({ w: 1920, h: 1080 });

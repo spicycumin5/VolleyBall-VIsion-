@@ -75,7 +75,8 @@ function Dashboard(){
             <div className="flex-1 grid overflow-y-auto sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 p-2 content-start">
                 {sessions
                     .filter(session => (
-                        session.title.toLowerCase().includes(searchQuery.toLowerCase()) || session.date.toLowerCase().includes(searchQuery.toLowerCase())
+                        (session.title || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        (session.date || "").toLowerCase().includes(searchQuery.toLowerCase())
                     ))
                     .map((session, index) => (
                     <Thumbnail

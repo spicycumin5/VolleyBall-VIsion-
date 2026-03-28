@@ -7,10 +7,6 @@ function Thumbnail({ id, video={
     date: "March 25, 10:15 AM",
 }, onClick, onDelete }) {
     const videoURL = `/thumbnails/thumbnail${(id % 8)}.png`;
-    console.log(videoURL);
-
-    
-
     return (
         <div 
             className='relative group cursor-pointer hover:bg-slate-600/10 rounded-xl transition-all duration-150 p-2'>
