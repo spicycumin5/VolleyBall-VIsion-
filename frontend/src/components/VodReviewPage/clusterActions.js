@@ -94,7 +94,8 @@ export function clusterActions(rawActions, opts = {}) {
  
       return {
         id: i + 1,
-        title: `Player ${c.playerId} — ${actionLabel}`,
+        //title: `Player ${c.playerId} — ${actionLabel}`,
+        title: `${actionLabel}`,
         action: c.action,
         playerId: c.playerId,
         start: Math.round(startSec * 100) / 100,

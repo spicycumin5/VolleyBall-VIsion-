@@ -15,7 +15,7 @@ export default function VodReviewPage() {
   const session = SESSIONS.find((s) => s.key === sessionKey);
  
   const [clips, setClips] = useState([]);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(-1);
  
   // Load and cluster action detections into playlist clips
   useEffect(() => {
@@ -24,7 +24,7 @@ export default function VodReviewPage() {
       fps: 60,
       minConf: 0.01,
       gapFrames: 10,
-      padSeconds: 1,
+      padSeconds: 0.5,
       minClipFrames: 1,
     }).then(setClips);
   }, [session?.actionURL]);
